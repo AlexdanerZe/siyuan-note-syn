@@ -8,8 +8,6 @@ import {
     adaptHotkey,
     getFrontend,
     getBackend,
-    // Setting,
-    // fetchPost,
     Protyle,
     openWindow,
     IOperation,
@@ -36,17 +34,22 @@ import SettingExample from "@/setting-example.svelte";
 
 import { SettingUtils } from "./libs/setting-utils";
 import { svelteDialog } from "./libs/dialog";
+import { SyncService, SyncConfig } from "./sync-service";
+import { logger } from "./libs/logger";
 
-const STORAGE_NAME = "menu-config";
+const STORAGE_NAME = "sync-config";
 const TAB_TYPE = "custom_tab";
 const DOCK_TYPE = "dock_tab";
 
-export default class PluginSample extends Plugin {
+export default class DailyProgressSyncPlugin extends Plugin {
 
     private custom: () => Custom;
     private isMobile: boolean;
     private blockIconEventBindThis = this.blockIconEvent.bind(this);
     private settingUtils: SettingUtils;
+    private syncService: SyncService;
+    private autoSyncTimer: NodeJS.Timeout | null = null;
+    private lastEditTime: number = 0;
 
 
     updateProtyleToolbar(toolbar: Array<string | IMenuItem>) {
@@ -65,277 +68,421 @@ export default class PluginSample extends Plugin {
     }
 
     async onload() {
-        this.data[STORAGE_NAME] = { readonlyText: "Readonly" };
+        logger.info("开始加载每日进展同步插件");
+        logger.logState("插件国际化数据", this.i18n);
 
-        console.log("loading plugin-sample", this.i18n);
-
-        const frontEnd = getFrontend();
-        this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
-        // 图标的制作参见帮助文档
-        this.addIcons(`<symbol id="iconFace" viewBox="0 0 32 32">
-<path d="M13.667 17.333c0 0.92-0.747 1.667-1.667 1.667s-1.667-0.747-1.667-1.667 0.747-1.667 1.667-1.667 1.667 0.747 1.667 1.667zM20 15.667c-0.92 0-1.667 0.747-1.667 1.667s0.747 1.667 1.667 1.667 1.667-0.747 1.667-1.667-0.747-1.667-1.667-1.667zM29.333 16c0 7.36-5.973 13.333-13.333 13.333s-13.333-5.973-13.333-13.333 5.973-13.333 13.333-13.333 13.333 5.973 13.333 13.333zM14.213 5.493c1.867 3.093 5.253 5.173 9.12 5.173 0.613 0 1.213-0.067 1.787-0.16-1.867-3.093-5.253-5.173-9.12-5.173-0.613 0-1.213 0.067-1.787 0.16zM5.893 12.627c2.28-1.293 4.040-3.4 4.88-5.92-2.28 1.293-4.040 3.4-4.88 5.92zM26.667 16c0-1.040-0.16-2.040-0.44-2.987-0.933 0.2-1.893 0.32-2.893 0.32-4.173 0-7.893-1.92-10.347-4.92-1.4 3.413-4.187 6.093-7.653 7.4 0.013 0.053 0 0.12 0 0.187 0 5.88 4.787 10.667 10.667 10.667s10.667-4.787 10.667-10.667z"></path>
-</symbol>
-<symbol id="iconSaving" viewBox="0 0 32 32">
-<path d="M20 13.333c0-0.733 0.6-1.333 1.333-1.333s1.333 0.6 1.333 1.333c0 0.733-0.6 1.333-1.333 1.333s-1.333-0.6-1.333-1.333zM10.667 12h6.667v-2.667h-6.667v2.667zM29.333 10v9.293l-3.76 1.253-2.24 7.453h-7.333v-2.667h-2.667v2.667h-7.333c0 0-3.333-11.28-3.333-15.333s3.28-7.333 7.333-7.333h6.667c1.213-1.613 3.147-2.667 5.333-2.667 1.107 0 2 0.893 2 2 0 0.28-0.053 0.533-0.16 0.773-0.187 0.453-0.347 0.973-0.427 1.533l3.027 3.027h2.893zM26.667 12.667h-1.333l-4.667-4.667c0-0.867 0.12-1.72 0.347-2.547-1.293 0.333-2.347 1.293-2.787 2.547h-8.227c-2.573 0-4.667 2.093-4.667 4.667 0 2.507 1.627 8.867 2.68 12.667h2.653v-2.667h8v2.667h2.68l2.067-6.867 3.253-1.093v-4.707z"></path>
-</symbol>`);
-
-        let tabDiv = document.createElement("div");
-        let app = null;
-        this.custom = this.addTab({
-            type: TAB_TYPE,
-            init() {
-                app = new HelloExample({
-                    target: tabDiv,
-                    props: {
-                        app: this.app,
-                        blockID: this.data.blockID
-                    }
-                });
-                this.element.appendChild(tabDiv);
-                console.log(this.element);
-            },
-            beforeDestroy() {
-                console.log("before destroy tab:", TAB_TYPE);
-            },
-            destroy() {
-                app?.$destroy();
-                console.log("destroy tab:", TAB_TYPE);
-            }
-        });
-
-        this.addCommand({
-            langKey: "showDialog",
-            hotkey: "⇧⌘O",
-            callback: () => {
-                this.showDialog();
-            },
-        });
-
-        this.addCommand({
-            langKey: "getTab",
-            hotkey: "⇧⌘M",
-            globalCallback: () => {
-                console.log(this.getOpenedTab());
-            },
-        });
-
-        this.addDock({
-            config: {
-                position: "LeftBottom",
-                size: { width: 200, height: 0 },
-                icon: "iconSaving",
-                title: "Custom Dock",
-                hotkey: "⌥⌘W",
-            },
-            data: {
-                text: "This is my custom dock"
-            },
-            type: DOCK_TYPE,
-            resize() {
-                console.log(DOCK_TYPE + " resize");
-            },
-            update() {
-                console.log(DOCK_TYPE + " update");
-            },
-            init: (dock) => {
-                if (this.isMobile) {
-                    dock.element.innerHTML = `<div class="toolbar toolbar--border toolbar--dark">
-                    <svg class="toolbar__icon"><use xlink:href="#iconEmoji"></use></svg>
-                        <div class="toolbar__text">Custom Dock</div>
-                    </div>
-                    <div class="fn__flex-1 plugin-sample__custom-dock">
-                        ${dock.data.text}
-                    </div>
-                    </div>`;
-                } else {
-                    dock.element.innerHTML = `<div class="fn__flex-1 fn__flex-column">
-                    <div class="block__icons">
-                        <div class="block__logo">
-                            <svg class="block__logoicon"><use xlink:href="#iconEmoji"></use></svg>
-                            Custom Dock
-                        </div>
-                        <span class="fn__flex-1 fn__space"></span>
-                        <span data-type="min" class="block__icon b3-tooltips b3-tooltips__sw" aria-label="Min ${adaptHotkey("⌘W")}"><svg class="block__logoicon"><use xlink:href="#iconMin"></use></svg></span>
-                    </div>
-                    <div class="fn__flex-1 plugin-sample__custom-dock">
-                        ${dock.data.text}
-                    </div>
-                    </div>`;
-                }
-            },
-            destroy() {
-                console.log("destroy dock:", DOCK_TYPE);
-            }
-        });
-
-        this.settingUtils = new SettingUtils({
-            plugin: this, name: STORAGE_NAME
-        });
-        this.settingUtils.addItem({
-            key: "Input",
-            value: "",
-            type: "textinput",
-            title: "Readonly text",
-            description: "Input description",
-            action: {
-                // Called when focus is lost and content changes
-                callback: () => {
-                    // Return data and save it in real time
-                    let value = this.settingUtils.takeAndSave("Input");
-                    console.log(value);
-                }
-            }
-        });
-        this.settingUtils.addItem({
-            key: "InputArea",
-            value: "",
-            type: "textarea",
-            title: "Readonly text",
-            description: "Input description",
-            // Called when focus is lost and content changes
-            action: {
-                callback: () => {
-                    // Read data in real time
-                    let value = this.settingUtils.take("InputArea");
-                    console.log(value);
-                }
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Check",
-            value: true,
-            type: "checkbox",
-            title: "Checkbox text",
-            description: "Check description",
-            action: {
-                callback: () => {
-                    // Return data and save it in real time
-                    let value = !this.settingUtils.get("Check");
-                    this.settingUtils.set("Check", value);
-                    console.log(value);
-                }
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Select",
-            value: 1,
-            type: "select",
-            title: "Select",
-            description: "Select description",
-            options: {
-                1: "Option 1",
-                2: "Option 2"
-            },
-            action: {
-                callback: () => {
-                    // Read data in real time
-                    let value = this.settingUtils.take("Select");
-                    console.log(value);
-                }
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Slider",
-            value: 50,
-            type: "slider",
-            title: "Slider text",
-            description: "Slider description",
-            direction: "column",
-            slider: {
-                min: 0,
-                max: 100,
-                step: 1,
-            },
-            action: {
-                callback: () => {
-                    // Read data in real time
-                    let value = this.settingUtils.take("Slider");
-                    console.log(value);
-                }
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Btn",
-            value: "",
-            type: "button",
-            title: "Button",
-            description: "Button description",
-            button: {
-                label: "Button",
-                callback: () => {
-                    showMessage("Button clicked");
-                }
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Custom Element",
-            value: "",
-            type: "custom",
-            direction: "row",
-            title: "Custom Element",
-            description: "Custom Element description",
-            //Any custom element must offer the following methods
-            createElement: (currentVal: any) => {
-                let div = document.createElement('div');
-                div.style.border = "1px solid var(--b3-theme-primary)";
-                div.contentEditable = "true";
-                div.textContent = currentVal;
-                return div;
-            },
-            getEleVal: (ele: HTMLElement) => {
-                return ele.textContent;
-            },
-            setEleVal: (ele: HTMLElement, val: any) => {
-                ele.textContent = val;
-            }
-        });
-        this.settingUtils.addItem({
-            key: "Hint",
-            value: "",
-            type: "hint",
-            title: this.i18n.hintTitle,
-            description: this.i18n.hintDesc,
-        });
+        // 环境检测
+        const isDev = process.env.NODE_ENV === 'development' || 
+                     window.location.hostname === 'localhost' || 
+                     window.location.port === '3001' ||
+                     window.location.href.includes('localhost') ||
+                     window.location.href.includes('127.0.0.1');
+        
+        const pluginDir = this.data?.[STORAGE_NAME]?.pluginDir || 'unknown';
+        const currentUrl = window.location.href;
+        
+        logger.info(`插件环境: ${isDev ? '开发' : '生产'}`);
 
         try {
-            this.settingUtils.load();
-        } catch (error) {
-            console.error("Error loading settings storage, probably empty config json:", error);
-        }
+            const frontEnd = getFrontend();
+            this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+            logger.info(`检测到前端环境: ${frontEnd}, 移动端: ${this.isMobile}`);
 
-
-        this.protyleSlash = [{
-            filter: ["insert emoji 😊", "插入表情 😊", "crbqwx"],
-            html: `<div class="b3-list-item__first"><span class="b3-list-item__text">${this.i18n.insertEmoji}</span><span class="b3-list-item__meta">😊</span></div>`,
-            id: "insertEmoji",
-            callback(protyle: Protyle) {
-                protyle.insert("😊");
+            // 初始化配置
+            if (!this.data[STORAGE_NAME]) {
+                this.data[STORAGE_NAME] = {
+                    diaryPath: "/daily note/{{now | date \"2006/01\"}}/{{now | date \"2006-01-02\"}}",
+                    projectPath: "/projects",
+                    progressSection: "今日进展",
+                    autoSyncEnabled: true,
+                    autoSyncDelay: 10000, // 10秒
+                    notebookId: "",
+                    notebookName: "",
+                    useTemplatePattern: true
+                };
+                // 保存默认配置到存储
+                await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
+            } else {
+                // 确保新配置项有默认值
+                if (this.data[STORAGE_NAME].useTemplatePattern === undefined) {
+                    this.data[STORAGE_NAME].useTemplatePattern = false;
+                }
+                if (this.data[STORAGE_NAME].notebookId === undefined) {
+                    this.data[STORAGE_NAME].notebookId = "";
+                }
+                if (this.data[STORAGE_NAME].notebookName === undefined) {
+                    this.data[STORAGE_NAME].notebookName = "";
+                }
             }
-        }];
 
-        this.protyleOptions = {
-            toolbar: ["block-ref",
-                "a",
-                "|",
-                "text",
-                "strong",
-                "em",
-                "u",
-                "s",
-                "mark",
-                "sup",
-                "sub",
-                "clear",
-                "|",
-                "code",
-                "kbd",
-                "tag",
-                "inline-math",
-                "inline-memo",
-            ],
-        };
+            // 先初始化设置，确保配置正确加载
+            await this.initializeSettings();
+            const config: SyncConfig = {
+                diaryPath: this.data[STORAGE_NAME].diaryPath,
+                projectPath: this.data[STORAGE_NAME].projectPath,
+                progressSection: this.data[STORAGE_NAME].progressSection,
+                autoSyncEnabled: this.data[STORAGE_NAME].autoSyncEnabled,
+                autoSyncDelay: this.data[STORAGE_NAME].autoSyncDelay / 1000, // 转换为秒
+                notebookId: this.data[STORAGE_NAME].notebookId,
+                notebookName: this.data[STORAGE_NAME].notebookName,
+                useTemplatePattern: this.data[STORAGE_NAME].useTemplatePattern
+            };
+            this.syncService = new SyncService(config);
 
-        console.log(this.i18n.helloPlugin);
+            // 添加图标
+            this.addIcons(`<symbol id="iconSync" viewBox="0 0 32 32">
+<path d="M24 12.5c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 6.627 5.373 12 12 12 3.059 0 5.842-1.154 7.961-3.039l-2.961-2.961c-1.321 1.321-3.121 2-5 2-3.866 0-7-3.134-7-7s3.134-7 7-7 7 3.134 7 7h-3l4 4 4-4h-3z"></path>
+</symbol>
+<symbol id="iconProject" viewBox="0 0 32 32">
+<path d="M28 6h-24c-2.2 0-4 1.8-4 4v12c0 2.2 1.8 4 4 4h24c2.2 0 4-1.8 4-4v-12c0-2.2-1.8-4-4-4zM28 22h-24v-12h24v12zM6 12h4v2h-4v-2zM6 16h4v2h-4v-2zM12 12h14v2h-14v-2zM12 16h10v2h-10v-2z"></path>
+</symbol>`);
+
+            // 添加手动同步命令
+            this.addCommand({
+                langKey: "manualSync",
+                hotkey: "⌘←",
+                callback: () => {
+                    this.manualSync();
+                },
+            });
+
+            // 添加设置命令
+            this.addCommand({
+                langKey: "openSettings",
+                hotkey: "⇧⌘P",
+                callback: () => {
+                    this.openSettingsDialog();
+                },
+            });
+
+            // 添加顶栏按钮
+            this.addTopBar({
+                icon: "iconSync",
+                title: this.i18n.manualSync,
+                position: "right",
+                callback: () => {
+                    this.manualSync();
+                }
+            });
+
+            // 设置编辑器事件监听
+            this.setupEditorListeners();
+
+            logger.info("每日进展同步插件加载完成");
+        } catch (error) {
+            logger.error("插件加载失败", error);
+            showMessage("插件加载失败，请查看控制台日志", 5000);
+            throw error;
+        }
+    }
+
+    /**
+     * 手动同步
+     */
+    private async manualSync() {
+        logger.logMethodEntry("DailyProgressSyncPlugin", "manualSync");
+        
+        try {
+            logger.debug("检查同步服务状态", {
+                hasSyncService: !!this.syncService,
+                hasData: !!this.data[STORAGE_NAME]
+            });
+
+            if (!this.syncService) {
+                logger.error("同步服务未初始化");
+                showMessage("同步服务未初始化，请重新加载插件", 3000);
+                return;
+            }
+
+            logger.info("开始手动同步项目进展");
+            showMessage("开始同步项目进展...", 3000);
+            
+            await this.syncService.syncProgress();
+            
+            logger.info("手动同步完成");
+            showMessage("同步完成", 2000);
+        } catch (error) {
+            logger.error("手动同步失败", error);
+            showMessage(`同步失败: ${error.message}`, 5000);
+        }
+        
+        logger.logMethodExit("DailyProgressSyncPlugin", "manualSync");
+    }
+
+    /**
+     * 设置编辑器事件监听
+     */
+    private setupEditorListeners() {
+        // 监听编辑器焦点变化
+        this.eventBus.on("loaded-protyle-dynamic", this.onProtyleLoaded.bind(this));
+        this.eventBus.on("destroy-protyle", this.onProtyleDestroy.bind(this));
+    }
+
+    /**
+     * 编辑器加载时的处理
+     */
+    private onProtyleLoaded(event: any) {
+        const protyle = event.detail.protyle;
+        if (!protyle || !protyle.element) return;
+
+        // 添加编辑事件监听
+        protyle.element.addEventListener('input', this.onEditorInput.bind(this));
+        protyle.element.addEventListener('blur', this.onEditorBlur.bind(this));
+    }
+
+    /**
+     * 编辑器销毁时的处理
+     */
+    private onProtyleDestroy(event: any) {
+        const protyle = event.detail.protyle;
+        if (!protyle || !protyle.element) return;
+
+        // 移除事件监听
+        protyle.element.removeEventListener('input', this.onEditorInput.bind(this));
+        protyle.element.removeEventListener('blur', this.onEditorBlur.bind(this));
+    }
+
+    /**
+     * 编辑器输入事件处理
+     */
+    private onEditorInput() {
+        this.lastEditTime = Date.now();
+        
+        // 清除之前的定时器
+        if (this.autoSyncTimer) {
+            clearTimeout(this.autoSyncTimer);
+            this.autoSyncTimer = null;
+        }
+    }
+
+    /**
+     * 编辑器失焦事件处理
+     */
+    private onEditorBlur() {
+        if (!this.data[STORAGE_NAME].autoSyncEnabled) return;
+
+        // 检查当前是否在日记文件中
+        if (!this.isInDiaryDocument()) return;
+
+        const delay = this.data[STORAGE_NAME].autoSyncDelay || 10000;
+        
+        // 设置自动同步定时器
+        this.autoSyncTimer = setTimeout(() => {
+            this.autoSync();
+        }, delay);
+    }
+
+    /**
+     * 检查当前是否在日记文档中
+     */
+    private isInDiaryDocument(): boolean {
+        try {
+            const editors = getAllEditor();
+            if (editors.length === 0) return false;
+
+            const currentEditor = editors[0];
+            if (!currentEditor || !currentEditor.protyle) return false;
+
+            const docPath = currentEditor.protyle.path;
+            const diaryPath = this.data[STORAGE_NAME].diaryPath;
+            
+            return docPath && docPath.includes(diaryPath);
+        } catch (error) {
+            console.error("检查日记文档时出错:", error);
+            return false;
+        }
+    }
+
+    /**
+     * 自动同步
+     */
+    private async autoSync() {
+        logger.logMethodEntry("DailyProgressSyncPlugin", "autoSync");
+        
+        try {
+            logger.debug("检查自动同步条件", {
+                hasSyncService: !!this.syncService,
+                hasData: !!this.data[STORAGE_NAME],
+                autoSyncEnabled: this.data[STORAGE_NAME]?.autoSyncEnabled
+            });
+
+            if (!this.syncService) {
+                logger.warn("同步服务未初始化，跳过自动同步");
+                return;
+            }
+
+            if (!this.data[STORAGE_NAME]?.autoSyncEnabled) {
+                logger.debug("自动同步已禁用，跳过同步");
+                return;
+            }
+
+            logger.info("执行自动同步");
+            await this.syncService.syncProgress();
+            logger.info("自动同步完成");
+        } catch (error) {
+            logger.error("自动同步失败", error);
+        }
+        
+        logger.logMethodExit("DailyProgressSyncPlugin", "autoSync");
+    }
+
+    /**
+     * 打开设置对话框
+     */
+    private openSettingsDialog() {
+        const dialog = new Dialog({
+            title: "项目进展同步设置",
+            content: `<div id="settingsContainer"></div>`,
+            width: "600px",
+            height: "500px"
+        });
+
+        // 创建设置界面
+        const container = dialog.element.querySelector("#settingsContainer");
+        if (container) {
+            new SettingExample({
+                target: container,
+                props: {
+                    plugin: this,
+                    config: this.data[STORAGE_NAME]
+                }
+            });
+        }
+    }
+
+    /**
+     * 初始化设置工具
+     */
+    private async initializeSettings() {
+        logger.logMethodEntry("DailyProgressSyncPlugin", "initializeSettings");
+        
+        try {
+            // 确保配置数据已初始化
+            logger.debug("检查配置数据状态", {
+                hasData: !!this.data,
+                hasConfig: !!this.data[STORAGE_NAME],
+                config: this.data[STORAGE_NAME]
+            });
+
+            if (!this.data[STORAGE_NAME]) {
+                logger.warn("配置数据未初始化，使用默认配置");
+                this.data[STORAGE_NAME] = {
+                    diaryPath: "/daily note",
+                    projectPath: "/projects",
+                    progressSection: "今日进展",
+                    autoSyncEnabled: true,
+                    autoSyncDelay: 10000
+                };
+                // 保存默认配置到存储
+                await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
+                logger.info("默认配置已设置并保存", this.data[STORAGE_NAME]);
+            }
+
+            logger.debug("开始创建SettingUtils实例");
+            this.settingUtils = new SettingUtils({
+                plugin: this, 
+                name: STORAGE_NAME
+            });
+            logger.info("SettingUtils实例创建成功");
+
+            // 先添加所有设置项（使用默认值）
+            // 模板路径开关
+            logger.debug("添加模板路径开关设置项");
+            this.settingUtils.addItem({
+                key: "useTemplatePattern",
+                value: this.data[STORAGE_NAME].useTemplatePattern !== undefined ? this.data[STORAGE_NAME].useTemplatePattern : true,
+                type: "checkbox",
+                title: "启用模板路径格式",
+                description: "启用后支持使用 {{now | date \"format\"}} 格式的动态路径"
+            });
+
+            logger.debug("添加日记目录路径设置项");
+            this.settingUtils.addItem({
+                key: "diaryPath",
+                value: this.data[STORAGE_NAME].diaryPath || "/daily note/{{now | date \"2006/01\"}}/{{now | date \"2006-01-02\"}}",
+                type: "textinput",
+                title: "日记目录路径",
+                description: "设置日记文件所在的目录路径。支持模板格式，如：/daily note/{{now | date \"2006/01\"}}/{{now | date \"2006-01-02\"}}"
+            });
+
+            // 笔记本ID设置
+            logger.debug("添加笔记本ID设置项");
+            this.settingUtils.addItem({
+                key: "notebookId",
+                value: this.data[STORAGE_NAME].notebookId || "",
+                type: "textinput",
+                title: "指定笔记本ID（可选）",
+                description: "限制只在指定笔记本中搜索日记，留空则搜索所有笔记本"
+            });
+
+            // 笔记本名称设置
+            logger.debug("添加笔记本名称设置项");
+            this.settingUtils.addItem({
+                key: "notebookName",
+                value: this.data[STORAGE_NAME].notebookName || "",
+                type: "textinput",
+                title: "指定笔记本名称（可选）",
+                description: "通过笔记本名称过滤日记，留空则不限制。优先级低于笔记本ID"
+            });
+
+            // 项目目录路径设置
+            logger.debug("添加项目目录路径设置项");
+            this.settingUtils.addItem({
+                key: "projectPath",
+                value: this.data[STORAGE_NAME].projectPath || "/projects",
+                type: "textinput",
+                title: "项目目录路径",
+                description: "设置项目文件所在的目录路径，如：/projects"
+            });
+
+            // 进展章节标题设置
+            logger.debug("添加进展章节标题设置项");
+            this.settingUtils.addItem({
+                key: "progressSection",
+                value: this.data[STORAGE_NAME].progressSection || "今日进展",
+                type: "textinput",
+                title: "进展章节标题",
+                description: "设置日记中进展内容的章节标题，如：今日进展"
+            });
+
+            // 自动同步开关
+            logger.debug("添加自动同步开关设置项");
+            this.settingUtils.addItem({
+                key: "autoSyncEnabled",
+                value: this.data[STORAGE_NAME].autoSyncEnabled !== undefined ? this.data[STORAGE_NAME].autoSyncEnabled : true,
+                type: "checkbox",
+                title: "启用自动同步",
+                description: "编辑焦点离开后自动执行同步"
+            });
+
+            // 自动同步延迟设置
+            logger.debug("添加自动同步延迟设置项");
+            this.settingUtils.addItem({
+                key: "autoSyncDelay",
+                value: this.data[STORAGE_NAME].autoSyncDelay || 10000,
+                type: "slider",
+                title: "自动同步延迟（毫秒）",
+                description: "编辑焦点离开后多长时间执行自动同步",
+                slider: {
+                    min: 5000,
+                    max: 60000,
+                    step: 1000
+                },
+                getEleVal: (ele: HTMLInputElement) => {
+                    return parseInt(ele.value);
+                }
+            });
+            
+            // 所有设置项添加完成后，加载已保存的配置
+            logger.debug("加载已保存的配置");
+            await this.settingUtils.load();
+            logger.info("配置加载完成", this.data[STORAGE_NAME]);
+
+            logger.logMethodExit("DailyProgressSyncPlugin", "initializeSettings", "设置初始化完成");
+        } catch (error) {
+            logger.error("设置初始化失败", error);
+            throw error;
+        }
     }
 
     onLayoutReady() {
@@ -379,24 +526,14 @@ export default class PluginSample extends Plugin {
         });
         // this.loadData(STORAGE_NAME);
         this.settingUtils.load();
-        console.log(`frontend: ${getFrontend()}; backend: ${getBackend()}`);
 
-        console.log(
-            "Official settings value calling example:\n" +
-            this.settingUtils.get("InputArea") + "\n" +
-            this.settingUtils.get("Slider") + "\n" +
-            this.settingUtils.get("Select") + "\n"
-        );
     }
 
     async onunload() {
-        console.log(this.i18n.byePlugin);
         showMessage("Goodbye SiYuan Plugin");
-        console.log("onunload");
     }
 
     uninstall() {
-        console.log("uninstall");
     }
 
     async updateCards(options: ICardData) {
@@ -412,22 +549,38 @@ export default class PluginSample extends Plugin {
         return options;
     }
     /**
-     * A custom setting pannel provided by svelte
+     * 打开插件设置面板
      */
     openSetting(): void {
-        let dialog = new Dialog({
-            title: "SettingPannel",
-            content: `<div id="SettingPanel" style="height: 100%;"></div>`,
-            width: "800px",
-            destroyCallback: (options) => {
-                console.log("destroyCallback", options);
-                //You'd better destroy the component when the dialog is closed
-                pannel.$destroy();
+        logger.logMethodEntry("DailyProgressSyncPlugin", "openSetting");
+        
+        try {
+            logger.debug("检查设置工具状态", {
+                hasSettingUtils: !!this.settingUtils,
+                hasSetting: !!this.setting
+            });
+
+            if (!this.settingUtils) {
+                logger.error('设置工具未初始化');
+                showMessage("设置工具未初始化，请重新加载插件", 3000);
+                return;
             }
-        });
-        let pannel = new SettingExample({
-            target: dialog.element.querySelector("#SettingPanel"),
-        });
+
+            // Use the Setting object created by SettingUtils
+            if (this.setting) {
+                logger.info("正在打开设置面板");
+                this.setting.open("Daily Progress Sync Settings");
+                logger.info("设置面板已打开");
+            } else {
+                logger.error('Setting对象不可用');
+                showMessage("设置面板不可用，请重新加载插件", 3000);
+            }
+        } catch (error) {
+            logger.error("打开设置面板失败", error);
+            showMessage("打开设置面板失败，请查看控制台日志", 3000);
+        }
+        
+        logger.logMethodExit("DailyProgressSyncPlugin", "openSetting");
     }
 
     private eventBusPaste(event: any) {
@@ -440,7 +593,6 @@ export default class PluginSample extends Plugin {
     }
 
     private eventBusLog({ detail }: any) {
-        console.log(detail);
     }
 
     private blockIconEvent({ detail }: any) {
@@ -485,7 +637,7 @@ export default class PluginSample extends Plugin {
 
     private addMenu(rect?: DOMRect) {
         const menu = new Menu("topBarSample", () => {
-            console.log(this.i18n.byeMenu);
+
         });
         menu.addItem({
             icon: "iconSettings",
@@ -545,7 +697,7 @@ export default class PluginSample extends Plugin {
                             id: this.name + TAB_TYPE
                         },
                     });
-                    console.log(tab);
+
                 }
             });
             menu.addItem({
@@ -558,7 +710,6 @@ export default class PluginSample extends Plugin {
                             path: "assets/paragraph-20210512165953-ag1nib4.svg"
                         }
                     });
-                    console.log(tab);
                 }
             });
             menu.addItem({
@@ -571,7 +722,6 @@ export default class PluginSample extends Plugin {
                             id: this.getEditor().protyle.block.rootID,
                         }
                     });
-                    console.log(tab);
                 }
             });
             menu.addItem({
@@ -584,7 +734,6 @@ export default class PluginSample extends Plugin {
                             k: "SiYuan"
                         }
                     });
-                    console.log(tab);
                 }
             });
             menu.addItem({
@@ -597,7 +746,6 @@ export default class PluginSample extends Plugin {
                             type: "all"
                         }
                     });
-                    console.log(tab);
                 }
             });
             menu.addItem({

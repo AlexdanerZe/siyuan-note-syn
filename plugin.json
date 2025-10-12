@@ -1,10 +1,10 @@
 {
-  "name": "plugin-sample-vite-svelte",
-  "author": "frostime",
-  "url": "https://github.com/siyuan-note/plugin-sample-vite-svelte",
-  "version": "0.4.1",
+  "name": "siyuan-note-syn",
+  "author": "wudongze",
+  "url": "https://github.com/wudongze/siyuan-note-syn",
+  "version": "1.0.0",
   "minAppVersion": "3.2.1",
-  "disabledInPublish": true,
+  "disabledInPublish": false,
   "backends": [
     "windows",
     "linux",
@@ -22,12 +22,12 @@
     "desktop-window"
   ],
   "displayName": {
-    "en_US": "Plugin sample with vite and svelte",
-    "zh_CN": "插件样例 vite + svelte 版"
+    "en_US": "Daily Progress Sync",
+    "zh_CN": "每日进展同步"
   },
   "description": {
-    "en_US": "SiYuan plugin sample with vite and svelte",
-    "zh_CN": "使用 vite 和 svelte 开发的思源插件样例"
+    "en_US": "Automatically sync daily progress from diary to project documents",
+    "zh_CN": "自动将每日日记中的项目进展同步到对应项目文档中"
   },
   "readme": {
     "en_US": "README.md",
