@@ -3,7 +3,7 @@
  * 负责扫描日记文件，提取项目进展内容，并同步到对应项目文档
  */
 
-import { sql, getBlockKramdown, updateBlock, prependBlock, getChildBlocks, pushMsg, exportMdContent } from "./api";
+import { sql, getBlockKramdown, updateBlock, prependBlock, getChildBlocks, pushMsg, exportMdContent, deleteBlock, insertBlock } from "./api";
 import { showMessage } from "siyuan";
 
 export interface SyncConfig {
@@ -102,12 +102,99 @@ export class SyncService {
     }
 
     /**
+     * 检测项目文档中被删除的内容块
+     */
+    private async detectDeletedBlocks(projectDocId: string): Promise<string[]> {
+        console.log(`🔍 [删除检测] 开始检测项目文档 ${projectDocId} 中的删除块`);
+        
+        const deletedBlockIds: string[] = [];
+        const dateMapping = this.dateBlockMapping.get(projectDocId);
+        
+        if (!dateMapping || dateMapping.size === 0) {
+            console.log(`🔍 [删除检测] 项目文档 ${projectDocId} 没有历史记录，跳过删除检测`);
+            return deletedBlockIds;
+        }
+
+        // 获取项目文档当前的所有块
+        const currentBlocks = await getChildBlocks(projectDocId);
+        const currentBlockIds = new Set<string>();
+        
+        // 递归收集所有当前存在的块ID
+        const collectBlockIds = async (blocks: any[]) => {
+            for (const block of blocks) {
+                currentBlockIds.add(block.id);
+                if (block.children && block.children.length > 0) {
+                    await collectBlockIds(block.children);
+                }
+                // 也获取子块
+                try {
+                    const childBlocks = await getChildBlocks(block.id);
+                    if (childBlocks && childBlocks.length > 0) {
+                        await collectBlockIds(childBlocks);
+                    }
+                } catch (error) {
+                    // 忽略获取子块失败的错误
+                }
+            }
+        };
+        
+        await collectBlockIds(currentBlocks);
+        console.log(`🔍 [删除检测] 当前文档中存在 ${currentBlockIds.size} 个块`);
+
+        // 检查历史记录中的块是否还存在
+        for (const [date, blockInfo] of dateMapping) {
+            if (!currentBlockIds.has(blockInfo.blockId)) {
+                console.log(`🗑️ [删除检测] 发现已删除的块: ${blockInfo.blockId} (日期: ${date})`);
+                deletedBlockIds.push(blockInfo.blockId);
+            }
+        }
+
+        console.log(`🔍 [删除检测] 检测完成，发现 ${deletedBlockIds.length} 个已删除的块`);
+        return deletedBlockIds;
+    }
+
+    /**
+     * 清理已删除块的记录
+     */
+    private cleanupDeletedBlockRecords(projectDocId: string, deletedBlockIds: string[]): void {
+        console.log(`🧹 [记录清理] 开始清理项目文档 ${projectDocId} 中 ${deletedBlockIds.length} 个已删除块的记录`);
+        
+        const dateMapping = this.dateBlockMapping.get(projectDocId);
+        if (!dateMapping) {
+            return;
+        }
+
+        // 找出需要删除的日期记录
+        const datesToRemove: string[] = [];
+        for (const [date, blockInfo] of dateMapping) {
+            if (deletedBlockIds.includes(blockInfo.blockId)) {
+                datesToRemove.push(date);
+                console.log(`🧹 [记录清理] 标记删除日期记录: ${date} -> ${blockInfo.blockId}`);
+            }
+        }
+
+        // 删除日期映射记录
+        for (const date of datesToRemove) {
+            dateMapping.delete(date);
+        }
+
+        // 清理哈希记录（这个比较复杂，因为我们不知道具体的哈希值）
+        // 我们可以重新初始化哈希记录来确保一致性
+        if (datesToRemove.length > 0) {
+            console.log(`🧹 [记录清理] 清理了 ${datesToRemove.length} 个日期记录，将重新初始化哈希记录`);
+            // 清空当前项目的哈希记录，让下次同步时重新初始化
+            this.hashRecords.delete(projectDocId);
+        }
+    }
+
+    /**
      * 初始化项目文档的哈希记录
      */
     private async initializeHashRecords(projectDocId: string): Promise<void> {
         try {
-            // 获取项目文档的现有内容
-            const existingBlocks = await getChildBlocks(projectDocId);
+            // 获取项目文档的现有内容 - 递归获取所有块
+            const topLevelBlocks = await getChildBlocks(projectDocId);
+            const allBlocks = await this.getAllBlocksRecursively(topLevelBlocks);
             
             if (!this.hashRecords.has(projectDocId)) {
                 this.hashRecords.set(projectDocId, new Set());
@@ -120,8 +207,10 @@ export class SyncService {
             const hashSet = this.hashRecords.get(projectDocId)!;
             const dateMap = this.dateBlockMapping.get(projectDocId)!;
             
-            // 解析现有内容并生成哈希
-            for (const block of existingBlocks) {
+            console.log(`📄 [初始化] 开始处理项目文档 ${projectDocId} 的 ${allBlocks.length} 个块`);
+            
+            // 解析现有内容并生成哈希 - 处理所有块
+            for (const block of allBlocks) {
                 try {
                     // 获取块的具体内容
                     const blockDetail = await getBlockKramdown(block.id);
@@ -157,7 +246,7 @@ export class SyncService {
                 }
             }
             
-            console.log(`项目文档 ${projectDocId} 初始化哈希记录: ${hashSet.size} 条，日期映射: ${dateMap.size} 条`);
+            console.log(`📄 [初始化完成] 项目文档 ${projectDocId} 哈希记录: ${hashSet.size} 条，日期映射: ${dateMap.size} 条`);
         } catch (error) {
             console.error(`初始化项目文档 ${projectDocId} 哈希记录失败:`, error);
         }
@@ -1012,7 +1101,9 @@ export class SyncService {
             // 过滤出新内容
             const newItems = [];
             for (const item of progressItems) {
-                const contentHash = this.generateContentHash(item.content);
+                // 使用与其他方法相同的内容处理逻辑
+                const normalizedContent = this.extractActualContent(item.content);
+                const contentHash = this.generateContentHash(normalizedContent);
                 
                 console.log(`🔍 [检查] ${item.date}: "${item.content.substring(0, 50)}..." (哈希: ${contentHash})`);
                 
@@ -1377,6 +1468,22 @@ export class SyncService {
                 }
             }
 
+            // 初始化哈希记录（如果还没有初始化）
+            if (!this.hashRecords.has(projectDoc.id)) {
+                await this.initializeHashRecords(projectDoc.id);
+            }
+
+            // 检测并清理已删除的内容块
+            console.log(`🔍 [删除检测] 开始检测项目文档 ${projectName} 中的删除内容`);
+            const deletedBlockIds = await this.detectDeletedBlocks(projectDoc.id);
+            if (deletedBlockIds.length > 0) {
+                console.log(`🗑️ [删除检测] 发现 ${deletedBlockIds.length} 个已删除的块，开始清理记录`);
+                this.cleanupDeletedBlockRecords(projectDoc.id, deletedBlockIds);
+                console.log(`✅ [删除检测] 已清理删除块的记录，确保同步状态一致`);
+            } else {
+                console.log(`✅ [删除检测] 未发现删除的内容块`);
+            }
+
             // 使用数据库查询检测重复内容
             const newItems = await this.filterDuplicateItems(projectDoc.id, progressItems);
             
@@ -1498,19 +1605,87 @@ export class SyncService {
         // 构造进展内容，格式：日期引用 + 换行 + 内容
         const progressContent = `${dateReference}\n${item.content}`;
         
-        // 计算内容哈希
-        const contentHash = this.generateContentHash(item.content);
+        // 计算内容哈希 - 使用与initializeHashRecords相同的内容处理逻辑
+        const normalizedContent = this.extractActualContent(item.content);
+        const contentHash = this.generateContentHash(normalizedContent);
         
         // 检查是否需要替换同一日期的内容
         const replaceInfo = this.shouldReplaceContent(docId, item.date, contentHash);
         
         if (replaceInfo.shouldReplace && replaceInfo.blockId) {
-            // 替换现有内容
-            console.log(`🔄 [内容替换] 检测到同一日期 ${item.date} 的内容变化，替换块 ${replaceInfo.blockId}`);
-            await updateBlock("markdown", progressContent, replaceInfo.blockId);
+            // 精确替换：删除旧块，在相同位置插入新块
+            console.log(`🔄 [精确替换] 检测到同一日期 ${item.date} 的内容变化，删除旧块 ${replaceInfo.blockId}`);
+            console.log(`🔄 [精确替换] 旧哈希: ${replaceInfo.blockId ? this.getDateBlockInfo(docId, item.date)?.hash : 'unknown'}`);
+            console.log(`🔄 [精确替换] 新哈希: ${contentHash}`);
+            console.log(`🔄 [精确替换] 新内容: "${progressContent}"`);
             
-            // 更新日期块映射中的哈希
-            this.addDateBlockMapping(docId, item.date, replaceInfo.blockId, contentHash);
+            try {
+                // 1. 获取旧块的位置信息
+                const oldBlock = await getBlockKramdown(replaceInfo.blockId);
+                console.log(`🔄 [精确替换] 旧块内容: "${oldBlock?.kramdown || 'empty'}"`);
+                
+                // 2. 获取旧块的父块和前一个兄弟块，用于确定插入位置
+                const allBlocks = await getChildBlocks(docId);
+                let previousBlockId: string | undefined;
+                let parentBlockId: string = docId; // 默认父块是文档本身
+                
+                // 查找旧块的位置信息
+                for (let i = 0; i < allBlocks.length; i++) {
+                    if (allBlocks[i].id === replaceInfo.blockId) {
+                        // 找到了旧块，记录前一个块的ID（如果存在）
+                        if (i > 0) {
+                            previousBlockId = allBlocks[i - 1].id;
+                        }
+                        break;
+                    }
+                }
+                
+                console.log(`🔄 [精确替换] 位置信息 - 父块: ${parentBlockId}, 前一块: ${previousBlockId || 'none'}`);
+                
+                // 3. 删除旧块
+                console.log(`🗑️ [精确替换] 删除旧块 ${replaceInfo.blockId}`);
+                await deleteBlock(replaceInfo.blockId);
+                
+                // 4. 在相同位置插入新块
+                let insertResult;
+                if (previousBlockId) {
+                    // 如果有前一个块，在其后插入
+                    console.log(`➕ [精确替换] 在块 ${previousBlockId} 后插入新内容`);
+                    insertResult = await insertBlock("markdown", progressContent, undefined, previousBlockId, parentBlockId);
+                } else {
+                    // 如果没有前一个块，在文档开头插入
+                    console.log(`➕ [精确替换] 在文档开头插入新内容`);
+                    insertResult = await prependBlock("markdown", progressContent, parentBlockId);
+                }
+                
+                // 5. 获取新块ID
+                let newBlockId = "unknown-block-id";
+                if (insertResult && insertResult.length > 0 && insertResult[0].doOperations && insertResult[0].doOperations.length > 0) {
+                    newBlockId = insertResult[0].doOperations[0].id;
+                    console.log(`✅ [精确替换] 成功创建新块: ${newBlockId}`);
+                } else {
+                    console.warn(`⚠️ [精确替换] 无法从插入结果中提取块ID`);
+                }
+                
+                // 6. 更新记录
+                this.addContentHash(docId, contentHash);
+                this.addDateBlockMapping(docId, item.date, newBlockId, contentHash);
+                console.log(`✅ [精确替换] 成功替换日期 ${item.date} 的内容，新块ID: ${newBlockId}`);
+                
+            } catch (error) {
+                console.error(`❌ [精确替换] 替换失败:`, error);
+                // 如果替换失败，回退到添加新内容
+                console.log(`🔄 [精确替换] 替换失败，回退到添加新内容`);
+                const result = await prependBlock("markdown", progressContent, docId);
+                
+                let newBlockId = "unknown-block-id";
+                if (result && result.length > 0 && result[0].doOperations && result[0].doOperations.length > 0) {
+                    newBlockId = result[0].doOperations[0].id;
+                }
+                
+                this.addContentHash(docId, contentHash);
+                this.addDateBlockMapping(docId, item.date, newBlockId, contentHash);
+            }
         } else {
             // 添加新内容到文档最上方
             console.log(`➕ [新增内容] 添加新的进展内容到项目文档，日期: ${item.date}`);
