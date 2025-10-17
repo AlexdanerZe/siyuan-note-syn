@@ -5,6 +5,7 @@
 
 import { sql, getBlockKramdown, updateBlock, prependBlock, getChildBlocks, pushMsg, exportMdContent, deleteBlock, insertBlock } from "./api";
 import { showMessage } from "siyuan";
+import { NotebookService, NotebookServiceConfig, DocumentInfo } from "./notebook-service";
 
 export interface SyncConfig {
     diaryPath: string;        // 日记目录路径（支持模板格式）
@@ -15,6 +16,13 @@ export interface SyncConfig {
     notebookId?: string;      // 指定笔记本ID（可选）
     notebookName?: string;    // 指定笔记本名称（可选）
     useTemplatePattern: boolean; // 是否使用模板路径格式
+    // 新增配置项
+    selectedNotebookId?: string;  // 选中的笔记本ID
+    selectedNotebookName?: string; // 选中的笔记本名称
+    dateFormat: string;           // 日期格式，如 "YYYY-MM-DD", "YY-MM-DD"
+    contentTitle: string;         // 要挖掘内容的标题
+    onlyLeafDocuments: boolean;   // 是否只处理叶子文档
+    enableNotebookLimitation: boolean; // 是否启用笔记本限定功能
 }
 
 export interface ProgressItem {
@@ -33,9 +41,20 @@ export class SyncService {
     private config: SyncConfig;
     private hashRecords: Map<string, Set<string>> = new Map(); // projectDocId -> Set<contentHash>
     private dateBlockMapping: Map<string, Map<string, {blockId: string, hash: string}>> = new Map(); // projectDocId -> Map<date, {blockId, hash}>
+    private notebookService: NotebookService;
 
     constructor(config: SyncConfig) {
         this.config = config;
+        
+        // 初始化NotebookService
+        const notebookConfig: NotebookServiceConfig = {
+            selectedNotebookId: config.selectedNotebookId,
+            selectedNotebookName: config.selectedNotebookName,
+            dateFormat: config.dateFormat || "YYYY-MM-DD",
+            contentTitle: config.contentTitle || "今日进展",
+            onlyLeafDocuments: config.onlyLeafDocuments || false
+        };
+        this.notebookService = new NotebookService(notebookConfig);
         
         // 环境检测和状态日志
         const isDev = process.env.NODE_ENV === 'development' || 
@@ -291,83 +310,15 @@ export class SyncService {
      * 从日记文件中提取进展内容
      */
     private async extractProgressFromDiaries(): Promise<ProgressItem[]> {
-        const progressItems: ProgressItem[] = [];
-
-        // 获取搜索路径模式
-        const pathPatterns = this.parseTemplatePath(this.config.diaryPath);
-        console.log(`🔍 [调试] 解析日记路径模板: ${this.config.diaryPath}`);
-        console.log(`🔍 [调试] 生成的路径模式: ${JSON.stringify(pathPatterns)}`);
-
-        // 构建查询条件
-        let whereConditions = [`b.type = 'd'`];
-        console.log(`🔍 [调试] 基础查询条件: 文档类型 = 'd'`);
-        
-        // 添加笔记本限制条件
-        if (this.config.notebookId) {
-            whereConditions.push(`b.box = '${this.config.notebookId}'`);
-            console.log(`🔍 [调试] 添加笔记本ID限制: ${this.config.notebookId}`);
+        // 检查是否启用笔记本限定功能
+        if (this.config.enableNotebookLimitation && this.config.selectedNotebookId) {
+            console.log(`🔍 [新功能] 使用笔记本限定功能，笔记本ID: ${this.config.selectedNotebookId}`);
+            return await this.extractProgressFromNotebookLimitation();
         }
 
-        // 添加路径匹配条件
-        const pathConditions = pathPatterns.map(pattern => 
-            `LOWER(b.hpath) LIKE LOWER('%${pattern}%')`
-        ).join(' OR ');
-        
-        if (pathConditions) {
-            whereConditions.push(`(${pathConditions})`);
-            console.log(`🔍 [调试] 添加路径匹配条件: ${pathConditions}`);
-        }
-
-        const diaryQuery = `
-            SELECT DISTINCT b.id, b.content, b.created, b.updated, b.hpath, b.box
-            FROM blocks b
-            WHERE ${whereConditions.join(' AND ')}
-            ORDER BY b.created DESC
-        `;
-        console.log(`🔍 [调试] 执行日记查询SQL: ${diaryQuery}`);
-
-        const diaryDocs = await sql(diaryQuery);
-        console.log(`🔍 [调试] 查询到 ${diaryDocs.length} 个日记文档`);
-        
-        if (diaryDocs.length > 0) {
-            console.log(`🔍 [调试] 前3个文档示例:`);
-            diaryDocs.slice(0, 3).forEach((doc, index) => {
-                console.log(`  ${index + 1}. ID: ${doc.id}, 路径: ${doc.hpath}, 笔记本: ${doc.box}`);
-            });
-        }
-
-        // 如果指定了笔记本名称但没有ID，尝试通过名称过滤
-        let filteredDocs = diaryDocs;
-        if (this.config.notebookName && !this.config.notebookId) {
-            console.log(`🔍 [调试] 使用笔记本名称过滤: ${this.config.notebookName}`);
-            
-            // 获取所有笔记本信息进行名称匹配
-            const notebookQuery = `
-                SELECT DISTINCT b.box
-                FROM blocks b
-                WHERE b.type = 'd'
-            `;
-            const allNotebooks = await sql(notebookQuery);
-            console.log(`🔍 [调试] 找到 ${allNotebooks.length} 个笔记本: ${allNotebooks.map(n => n.box).join(', ')}`);
-            
-            // 这里可以进一步实现笔记本名称到ID的映射
-            // 暂时使用路径匹配作为替代方案
-            filteredDocs = diaryDocs.filter(doc => 
-                doc.hpath.toLowerCase().includes(this.config.notebookName.toLowerCase())
-            );
-            console.log(`🔍 [调试] 按笔记本名称过滤后剩余 ${filteredDocs.length} 个文档`);
-        }
-
-        console.log(`🔍 [调试] 开始处理 ${filteredDocs.length} 个文档，提取进展内容`);
-        for (const doc of filteredDocs) {
-            console.log(`🔍 [调试] 处理文档: ${doc.hpath} (ID: ${doc.id})`);
-            const docProgressItems = await this.extractProgressFromDocument(doc.id, doc.hpath);
-            console.log(`🔍 [调试] 从文档 ${doc.hpath} 提取到 ${docProgressItems.length} 个进展项`);
-            progressItems.push(...docProgressItems);
-        }
-
-        console.log(`🔍 [调试] 总计提取到 ${progressItems.length} 个进展项`);
-        return progressItems;
+        // 使用传统的路径匹配方式
+        console.log(`🔍 [传统模式] 使用路径匹配方式提取进展`);
+        return await this.extractProgressFromPathMatching();
     }
 
     /**
@@ -2785,5 +2736,214 @@ export class SyncService {
     clearSyncHistory(): void {
         // 基于数据库的重复检测不需要清除内存状态
         console.log('📋 同步历史已清除（基于数据库检测，无需清除内存状态）');
+    }
+
+    /**
+     * 从日期匹配结果解析日期
+     */
+    private parseDateFromMatch(match: RegExpMatchArray, format: string): Date {
+        const dateStr = match[0];
+        
+        // 根据格式解析日期
+        if (format === 'YYYY-MM-DD') {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day);
+        } else if (format === 'YY-MM-DD') {
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const fullYear = year < 50 ? 2000 + year : 1900 + year; // 假设50年以下为21世纪
+            return new Date(fullYear, month - 1, day);
+        } else if (format === 'YYYY/MM/DD') {
+            const [year, month, day] = dateStr.split('/').map(Number);
+            return new Date(year, month - 1, day);
+        } else if (format === 'MM-DD') {
+            const [month, day] = dateStr.split('-').map(Number);
+            const currentYear = new Date().getFullYear();
+            return new Date(currentYear, month - 1, day);
+        } else if (format === 'YYYYMMDD') {
+            const year = parseInt(dateStr.substring(0, 4));
+            const month = parseInt(dateStr.substring(4, 6));
+            const day = parseInt(dateStr.substring(6, 8));
+            return new Date(year, month - 1, day);
+        }
+        
+        // 默认返回当前日期
+        return new Date();
+    }
+
+    /**
+     * 格式化日期为字符串
+     */
+    private formatDate(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    /**
+     * 使用笔记本限定功能提取进展内容
+     */
+    private async extractProgressFromNotebookLimitation(): Promise<ProgressItem[]> {
+        const progressItems: ProgressItem[] = [];
+        
+        try {
+            // 获取指定笔记本的文档
+            let documents: DocumentInfo[];
+            
+            if (this.config.onlyLeafDocuments) {
+                console.log(`📄 获取笔记本 ${this.config.selectedNotebookId} 的叶子文档`);
+                documents = await this.notebookService.getLeafDocuments(this.config.selectedNotebookId!);
+            } else {
+                console.log(`📄 获取笔记本 ${this.config.selectedNotebookId} 的所有文档`);
+                documents = await this.notebookService.getDocumentsByNotebook(this.config.selectedNotebookId!);
+            }
+            
+            console.log(`📄 找到 ${documents.length} 个文档`);
+            
+            // 按日期格式过滤文档
+            const dateFormatConfig = this.notebookService.getSupportedDateFormats()
+                .find(format => format.format === this.config.dateFormat);
+            
+            if (!dateFormatConfig) {
+                console.warn(`⚠️ 不支持的日期格式: ${this.config.dateFormat}`);
+                return progressItems;
+            }
+            
+            const diaryDocuments = documents.filter(doc => {
+                const hasDateInName = dateFormatConfig.pattern.test(doc.name);
+                const hasDateInPath = dateFormatConfig.pattern.test(doc.hpath);
+                return hasDateInName || hasDateInPath;
+            });
+            
+            console.log(`📅 按日期格式 ${this.config.dateFormat} 过滤后，找到 ${diaryDocuments.length} 个日记文档`);
+            
+            // 从每个日记文档中提取内容
+            for (const doc of diaryDocuments) {
+                console.log(`📖 处理文档: ${doc.name} (${doc.id})`);
+                
+                // 提取指定标题下的内容
+                const contents = await this.notebookService.extractContentUnderTitle(
+                    doc.id, 
+                    this.config.contentTitle
+                );
+                
+                if (contents.length > 0) {
+                    console.log(`📝 从文档 ${doc.name} 提取到 ${contents.length} 条内容`);
+                    
+                    // 解析日期
+                    const dateMatch = doc.name.match(dateFormatConfig.pattern) || 
+                                    doc.hpath.match(dateFormatConfig.pattern);
+                    
+                    if (dateMatch) {
+                        const date = this.parseDateFromMatch(dateMatch, dateFormatConfig.format);
+                        const dateString = this.formatDate(date);
+                        
+                        // 为每条内容创建ProgressItem
+                        contents.forEach((content, index) => {
+                            const projectRefs = this.extractProjectReferences(content);
+                            
+                            if (projectRefs.length > 0) {
+                                progressItems.push({
+                                    date: dateString,
+                                    blockId: `${doc.id}_${index}`, // 临时ID
+                                    content: content,
+                                    projectRefs: projectRefs
+                                });
+                            }
+                        });
+                    }
+                }
+            }
+            
+            console.log(`✅ 笔记本限定模式提取完成，共 ${progressItems.length} 条进展记录`);
+            return progressItems;
+            
+        } catch (error) {
+            console.error("❌ 笔记本限定模式提取失败:", error);
+            return progressItems;
+        }
+    }
+
+    /**
+     * 使用传统路径匹配方式提取进展内容
+     */
+    private async extractProgressFromPathMatching(): Promise<ProgressItem[]> {
+        const progressItems: ProgressItem[] = [];
+
+        // 获取搜索路径模式
+        const pathPatterns = this.parseTemplatePath(this.config.diaryPath);
+        console.log(`🔍 [调试] 解析日记路径模板: ${this.config.diaryPath}`);
+        console.log(`🔍 [调试] 生成的路径模式: ${JSON.stringify(pathPatterns)}`);
+
+        // 构建查询条件
+        let whereConditions = [`b.type = 'd'`];
+        console.log(`🔍 [调试] 基础查询条件: 文档类型 = 'd'`);
+        
+        // 添加笔记本限制条件
+        if (this.config.notebookId) {
+            whereConditions.push(`b.box = '${this.config.notebookId}'`);
+            console.log(`🔍 [调试] 添加笔记本ID限制: ${this.config.notebookId}`);
+        }
+
+        // 添加路径匹配条件
+        const pathConditions = pathPatterns.map(pattern => 
+            `LOWER(b.hpath) LIKE LOWER('%${pattern}%')`
+        ).join(' OR ');
+        
+        if (pathConditions) {
+            whereConditions.push(`(${pathConditions})`);
+            console.log(`🔍 [调试] 添加路径匹配条件: ${pathConditions}`);
+        }
+
+        const diaryQuery = `
+            SELECT DISTINCT b.id, b.content, b.created, b.updated, b.hpath, b.box
+            FROM blocks b
+            WHERE ${whereConditions.join(' AND ')}
+            ORDER BY b.created DESC
+        `;
+        console.log(`🔍 [调试] 执行日记查询SQL: ${diaryQuery}`);
+
+        const diaryDocs = await sql(diaryQuery);
+        console.log(`🔍 [调试] 查询到 ${diaryDocs.length} 个日记文档`);
+        
+        if (diaryDocs.length > 0) {
+            console.log(`🔍 [调试] 前3个文档示例:`);
+            diaryDocs.slice(0, 3).forEach((doc, index) => {
+                console.log(`  ${index + 1}. ID: ${doc.id}, 路径: ${doc.hpath}, 笔记本: ${doc.box}`);
+            });
+        }
+
+        // 如果指定了笔记本名称但没有ID，尝试通过名称过滤
+        let filteredDocs = diaryDocs;
+        if (this.config.notebookName && !this.config.notebookId) {
+            console.log(`🔍 [调试] 使用笔记本名称过滤: ${this.config.notebookName}`);
+            
+            // 获取所有笔记本信息进行名称匹配
+            const notebookQuery = `
+                SELECT DISTINCT b.box
+                FROM blocks b
+                WHERE b.type = 'd'
+            `;
+            const allNotebooks = await sql(notebookQuery);
+            console.log(`🔍 [调试] 找到 ${allNotebooks.length} 个笔记本: ${allNotebooks.map(n => n.box).join(', ')}`);
+            
+            // 这里可以进一步实现笔记本名称到ID的映射
+            // 暂时使用路径匹配作为替代方案
+            filteredDocs = diaryDocs.filter(doc => 
+                doc.hpath.toLowerCase().includes(this.config.notebookName.toLowerCase())
+            );
+            console.log(`🔍 [调试] 按笔记本名称过滤后剩余 ${filteredDocs.length} 个文档`);
+        }
+
+        console.log(`🔍 [调试] 开始处理 ${filteredDocs.length} 个文档，提取进展内容`);
+        for (const doc of filteredDocs) {
+            console.log(`🔍 [调试] 处理文档: ${doc.hpath} (ID: ${doc.id})`);
+            const docProgressItems = await this.extractProgressFromDocument(doc.id, doc.hpath);
+            console.log(`🔍 [调试] 从文档 ${doc.hpath} 提取到 ${docProgressItems.length} 个进展项`);
+            progressItems.push(...docProgressItems);
+        }
+
+        console.log(`🔍 [调试] 总计提取到 ${progressItems.length} 个进展项`);
+        return progressItems;
     }
 }

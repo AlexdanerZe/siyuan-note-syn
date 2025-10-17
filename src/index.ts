@@ -31,6 +31,7 @@ import { IMenuItem } from "siyuan/types";
 
 import HelloExample from "@/hello.svelte";
 import SettingExample from "@/setting-example.svelte";
+import NotebookSettings from "@/notebook-settings.svelte";
 
 import { SettingUtils } from "./libs/setting-utils";
 import { svelteDialog } from "./libs/dialog";
@@ -71,65 +72,63 @@ export default class DailyProgressSyncPlugin extends Plugin {
         logger.info("开始加载每日进展同步插件");
         logger.logState("插件国际化数据", this.i18n);
 
-        // 环境检测
-        const isDev = process.env.NODE_ENV === 'development' || 
-                     window.location.hostname === 'localhost' || 
-                     window.location.port === '3001' ||
-                     window.location.href.includes('localhost') ||
-                     window.location.href.includes('127.0.0.1');
-        
-        const pluginDir = this.data?.[STORAGE_NAME]?.pluginDir || 'unknown';
-        const currentUrl = window.location.href;
-        
-        logger.info(`插件环境: ${isDev ? '开发' : '生产'}`);
-
         try {
             const frontEnd = getFrontend();
             this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
             logger.info(`检测到前端环境: ${frontEnd}, 移动端: ${this.isMobile}`);
 
             // 初始化配置
+            logger.debug("检查插件数据存储", { 
+                hasStorage: !!this.data,
+                hasConfig: !!this.data[STORAGE_NAME],
+                currentData: this.data[STORAGE_NAME]
+            });
+
             if (!this.data[STORAGE_NAME]) {
+                logger.warn("未找到配置数据，使用默认配置");
                 this.data[STORAGE_NAME] = {
-                    diaryPath: "/daily note/{{now | date \"2006/01\"}}/{{now | date \"2006-01-02\"}}",
+                    diaryPath: "/daily note",
                     projectPath: "/projects",
                     progressSection: "今日进展",
                     autoSyncEnabled: true,
                     autoSyncDelay: 10000, // 10秒
-                    notebookId: "",
-                    notebookName: "",
-                    useTemplatePattern: true
+                    useTemplatePattern: false,
+                    dateFormat: "YYYY-MM-DD",
+                    contentTitle: "今日进展",
+                    onlyLeafDocuments: false,
+                    enableNotebookLimitation: false,
+                    selectedNotebookId: "",
+                    selectedNotebookName: ""
                 };
                 // 保存默认配置到存储
                 await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
+                logger.info("默认配置已设置并保存", this.data[STORAGE_NAME]);
             } else {
-                // 确保新配置项有默认值
-                if (this.data[STORAGE_NAME].useTemplatePattern === undefined) {
-                    this.data[STORAGE_NAME].useTemplatePattern = false;
-                }
-                if (this.data[STORAGE_NAME].notebookId === undefined) {
-                    this.data[STORAGE_NAME].notebookId = "";
-                }
-                if (this.data[STORAGE_NAME].notebookName === undefined) {
-                    this.data[STORAGE_NAME].notebookName = "";
-                }
+                logger.info("加载现有配置", this.data[STORAGE_NAME]);
             }
 
-            // 先初始化设置，确保配置正确加载
-            await this.initializeSettings();
+            // 初始化同步服务
+            logger.debug("开始初始化同步服务");
             const config: SyncConfig = {
                 diaryPath: this.data[STORAGE_NAME].diaryPath,
                 projectPath: this.data[STORAGE_NAME].projectPath,
                 progressSection: this.data[STORAGE_NAME].progressSection,
                 autoSyncEnabled: this.data[STORAGE_NAME].autoSyncEnabled,
                 autoSyncDelay: this.data[STORAGE_NAME].autoSyncDelay / 1000, // 转换为秒
-                notebookId: this.data[STORAGE_NAME].notebookId,
-                notebookName: this.data[STORAGE_NAME].notebookName,
-                useTemplatePattern: this.data[STORAGE_NAME].useTemplatePattern
+                useTemplatePattern: this.data[STORAGE_NAME].useTemplatePattern || false,
+                dateFormat: this.data[STORAGE_NAME].dateFormat || "YYYY-MM-DD",
+                contentTitle: this.data[STORAGE_NAME].contentTitle || "今日进展",
+                onlyLeafDocuments: this.data[STORAGE_NAME].onlyLeafDocuments || false,
+                enableNotebookLimitation: this.data[STORAGE_NAME].enableNotebookLimitation || false,
+                selectedNotebookId: this.data[STORAGE_NAME].selectedNotebookId || "",
+                selectedNotebookName: this.data[STORAGE_NAME].selectedNotebookName || ""
             };
+            logger.info("同步服务配置", config);
             this.syncService = new SyncService(config);
+            logger.info("同步服务初始化完成");
 
             // 添加图标
+            logger.debug("添加插件图标");
             this.addIcons(`<symbol id="iconSync" viewBox="0 0 32 32">
 <path d="M24 12.5c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 6.627 5.373 12 12 12 3.059 0 5.842-1.154 7.961-3.039l-2.961-2.961c-1.321 1.321-3.121 2-5 2-3.866 0-7-3.134-7-7s3.134-7 7-7 7 3.134 7 7h-3l4 4 4-4h-3z"></path>
 </symbol>
@@ -138,6 +137,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
 </symbol>`);
 
             // 添加手动同步命令
+            logger.debug("添加手动同步命令");
             this.addCommand({
                 langKey: "manualSync",
                 hotkey: "⌘←",
@@ -147,6 +147,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
             });
 
             // 添加设置命令
+            logger.debug("添加设置命令");
             this.addCommand({
                 langKey: "openSettings",
                 hotkey: "⇧⌘P",
@@ -156,6 +157,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
             });
 
             // 添加顶栏按钮
+            logger.debug("添加顶栏按钮");
             this.addTopBar({
                 icon: "iconSync",
                 title: this.i18n.manualSync,
@@ -166,7 +168,12 @@ export default class DailyProgressSyncPlugin extends Plugin {
             });
 
             // 设置编辑器事件监听
+            logger.debug("设置编辑器事件监听");
             this.setupEditorListeners();
+
+            // 初始化设置工具
+            logger.debug("初始化设置工具");
+            await this.initializeSettings();
 
             logger.info("每日进展同步插件加载完成");
         } catch (error) {
@@ -333,14 +340,14 @@ export default class DailyProgressSyncPlugin extends Plugin {
         const dialog = new Dialog({
             title: "项目进展同步设置",
             content: `<div id="settingsContainer"></div>`,
-            width: "600px",
-            height: "500px"
+            width: "800px",
+            height: "600px"
         });
 
         // 创建设置界面
         const container = dialog.element.querySelector("#settingsContainer");
         if (container) {
-            new SettingExample({
+            new NotebookSettings({
                 target: container,
                 props: {
                     plugin: this,
@@ -385,44 +392,24 @@ export default class DailyProgressSyncPlugin extends Plugin {
             });
             logger.info("SettingUtils实例创建成功");
 
-            // 先添加所有设置项（使用默认值）
-            // 模板路径开关
-            logger.debug("添加模板路径开关设置项");
-            this.settingUtils.addItem({
-                key: "useTemplatePattern",
-                value: this.data[STORAGE_NAME].useTemplatePattern !== undefined ? this.data[STORAGE_NAME].useTemplatePattern : true,
-                type: "checkbox",
-                title: "启用模板路径格式",
-                description: "启用后支持使用 {{now | date \"format\"}} 格式的动态路径"
-            });
-
+            // 日记目录路径设置
             logger.debug("添加日记目录路径设置项");
             this.settingUtils.addItem({
                 key: "diaryPath",
-                value: this.data[STORAGE_NAME].diaryPath || "/daily note/{{now | date \"2006/01\"}}/{{now | date \"2006-01-02\"}}",
+                value: this.data[STORAGE_NAME].diaryPath || "/daily note",
                 type: "textinput",
                 title: "日记目录路径",
-                description: "设置日记文件所在的目录路径。支持模板格式，如：/daily note/{{now | date \"2006/01\"}}/{{now | date \"2006-01-02\"}}"
-            });
-
-            // 笔记本ID设置
-            logger.debug("添加笔记本ID设置项");
-            this.settingUtils.addItem({
-                key: "notebookId",
-                value: this.data[STORAGE_NAME].notebookId || "",
-                type: "textinput",
-                title: "指定笔记本ID（可选）",
-                description: "限制只在指定笔记本中搜索日记，留空则搜索所有笔记本"
-            });
-
-            // 笔记本名称设置
-            logger.debug("添加笔记本名称设置项");
-            this.settingUtils.addItem({
-                key: "notebookName",
-                value: this.data[STORAGE_NAME].notebookName || "",
-                type: "textinput",
-                title: "指定笔记本名称（可选）",
-                description: "通过笔记本名称过滤日记，留空则不限制。优先级低于笔记本ID"
+                description: "设置日记文件所在的目录路径，如：/daily note",
+                action: {
+                    callback: async () => {
+                        logger.debug("日记目录路径设置回调被触发");
+                        const value = await this.settingUtils.takeAndSave("diaryPath");
+                        if (this.syncService) {
+                            this.syncService.updateConfig({ diaryPath: value });
+                        }
+                        logger.info("日记目录路径已更新", { value });
+                    }
+                }
             });
 
             // 项目目录路径设置
@@ -432,7 +419,17 @@ export default class DailyProgressSyncPlugin extends Plugin {
                 value: this.data[STORAGE_NAME].projectPath || "/projects",
                 type: "textinput",
                 title: "项目目录路径",
-                description: "设置项目文件所在的目录路径，如：/projects"
+                description: "设置项目文件所在的目录路径，如：/projects",
+                action: {
+                    callback: async () => {
+                        logger.debug("项目目录路径设置回调被触发");
+                        const value = await this.settingUtils.takeAndSave("projectPath");
+                        if (this.syncService) {
+                            this.syncService.updateConfig({ projectPath: value });
+                        }
+                        logger.info("项目目录路径已更新", { value });
+                    }
+                }
             });
 
             // 进展章节标题设置
@@ -442,7 +439,17 @@ export default class DailyProgressSyncPlugin extends Plugin {
                 value: this.data[STORAGE_NAME].progressSection || "今日进展",
                 type: "textinput",
                 title: "进展章节标题",
-                description: "设置日记中进展内容的章节标题，如：今日进展"
+                description: "设置日记中进展内容的章节标题，如：今日进展",
+                action: {
+                    callback: async () => {
+                        logger.debug("进展章节标题设置回调被触发");
+                        const value = await this.settingUtils.takeAndSave("progressSection");
+                        if (this.syncService) {
+                            this.syncService.updateConfig({ progressSection: value });
+                        }
+                        logger.info("进展章节标题已更新", { value });
+                    }
+                }
             });
 
             // 自动同步开关
@@ -452,7 +459,14 @@ export default class DailyProgressSyncPlugin extends Plugin {
                 value: this.data[STORAGE_NAME].autoSyncEnabled !== undefined ? this.data[STORAGE_NAME].autoSyncEnabled : true,
                 type: "checkbox",
                 title: "启用自动同步",
-                description: "编辑焦点离开后自动执行同步"
+                description: "编辑焦点离开后自动执行同步",
+                action: {
+                    callback: async () => {
+                        logger.debug("自动同步开关设置回调被触发");
+                        const value = await this.settingUtils.takeAndSave("autoSyncEnabled");
+                        logger.info("自动同步开关已更新", { value });
+                    }
+                }
             });
 
             // 自动同步延迟设置
@@ -468,15 +482,14 @@ export default class DailyProgressSyncPlugin extends Plugin {
                     max: 60000,
                     step: 1000
                 },
-                getEleVal: (ele: HTMLInputElement) => {
-                    return parseInt(ele.value);
+                action: {
+                    callback: async () => {
+                        logger.debug("自动同步延迟设置回调被触发");
+                        const value = await this.settingUtils.takeAndSave("autoSyncDelay");
+                        logger.info("自动同步延迟已更新", { value });
+                    }
                 }
             });
-            
-            // 所有设置项添加完成后，加载已保存的配置
-            logger.debug("加载已保存的配置");
-            await this.settingUtils.load();
-            logger.info("配置加载完成", this.data[STORAGE_NAME]);
 
             logger.logMethodExit("DailyProgressSyncPlugin", "initializeSettings", "设置初始化完成");
         } catch (error) {
@@ -507,6 +520,16 @@ export default class DailyProgressSyncPlugin extends Plugin {
             }
         });
 
+        // 添加专门的设置按钮
+        const settingsBarElement = this.addTopBar({
+            icon: "iconSettings",
+            title: "项目进展同步设置",
+            position: "right",
+            callback: () => {
+                this.openSettingsDialog();
+            }
+        });
+
         const statusIconTemp = document.createElement("template");
         statusIconTemp.innerHTML = `<div class="toolbar__item ariaLabel" aria-label="Remove plugin-sample Data">
     <svg>
@@ -526,14 +549,24 @@ export default class DailyProgressSyncPlugin extends Plugin {
         });
         // this.loadData(STORAGE_NAME);
         this.settingUtils.load();
+        console.log(`frontend: ${getFrontend()}; backend: ${getBackend()}`);
 
+        console.log(
+            "Official settings value calling example:\n" +
+            this.settingUtils.get("InputArea") + "\n" +
+            this.settingUtils.get("Slider") + "\n" +
+            this.settingUtils.get("Select") + "\n"
+        );
     }
 
     async onunload() {
+        console.log(this.i18n.byePlugin);
         showMessage("Goodbye SiYuan Plugin");
+        console.log("onunload");
     }
 
     uninstall() {
+        console.log("uninstall");
     }
 
     async updateCards(options: ICardData) {
@@ -555,26 +588,10 @@ export default class DailyProgressSyncPlugin extends Plugin {
         logger.logMethodEntry("DailyProgressSyncPlugin", "openSetting");
         
         try {
-            logger.debug("检查设置工具状态", {
-                hasSettingUtils: !!this.settingUtils,
-                hasSetting: !!this.setting
-            });
-
-            if (!this.settingUtils) {
-                logger.error('设置工具未初始化');
-                showMessage("设置工具未初始化，请重新加载插件", 3000);
-                return;
-            }
-
-            // Use the Setting object created by SettingUtils
-            if (this.setting) {
-                logger.info("正在打开设置面板");
-                this.setting.open("Daily Progress Sync Settings");
-                logger.info("设置面板已打开");
-            } else {
-                logger.error('Setting对象不可用');
-                showMessage("设置面板不可用，请重新加载插件", 3000);
-            }
+            logger.info("正在打开新的设置界面");
+            // 使用新的设置界面而不是旧的SettingUtils
+            this.openSettingsDialog();
+            logger.info("新设置界面已打开");
         } catch (error) {
             logger.error("打开设置面板失败", error);
             showMessage("打开设置面板失败，请查看控制台日志", 3000);
@@ -593,6 +610,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
     }
 
     private eventBusLog({ detail }: any) {
+        console.log(detail);
     }
 
     private blockIconEvent({ detail }: any) {
@@ -637,7 +655,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
 
     private addMenu(rect?: DOMRect) {
         const menu = new Menu("topBarSample", () => {
-
+            console.log(this.i18n.byeMenu);
         });
         menu.addItem({
             icon: "iconSettings",
@@ -651,6 +669,13 @@ export default class DailyProgressSyncPlugin extends Plugin {
             label: "Open Plugin Setting",
             click: () => {
                 this.openSetting();
+            }
+        });
+        menu.addItem({
+            icon: "iconSettings",
+            label: "项目进展同步设置",
+            click: () => {
+                this.openSettingsDialog();
             }
         });
         menu.addSeparator();
@@ -697,7 +722,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
                             id: this.name + TAB_TYPE
                         },
                     });
-
+                    console.log(tab);
                 }
             });
             menu.addItem({
@@ -710,6 +735,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
                             path: "assets/paragraph-20210512165953-ag1nib4.svg"
                         }
                     });
+                    console.log(tab);
                 }
             });
             menu.addItem({
@@ -722,6 +748,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
                             id: this.getEditor().protyle.block.rootID,
                         }
                     });
+                    console.log(tab);
                 }
             });
             menu.addItem({
@@ -734,6 +761,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
                             k: "SiYuan"
                         }
                     });
+                    console.log(tab);
                 }
             });
             menu.addItem({
@@ -746,6 +774,7 @@ export default class DailyProgressSyncPlugin extends Plugin {
                             type: "all"
                         }
                     });
+                    console.log(tab);
                 }
             });
             menu.addItem({

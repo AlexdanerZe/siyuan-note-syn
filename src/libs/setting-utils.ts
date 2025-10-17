@@ -96,7 +96,7 @@ export class SettingUtils {
         this.plugin.setting = new Setting({
             width: args.width,
             height: args.height,
-            confirmCallback: async () => {
+            confirmCallback: () => {
                 for (let key of this.settings.keys()) {
                     this.updateValueFromElement(key);
                 }
@@ -105,14 +105,7 @@ export class SettingUtils {
                     args.callback(data);
                 }
                 this.plugin.data[this.name] = data;
-                await this.save(data);
-                
-                // 更新同步服务配置
-                if ((this.plugin as any).syncService) {
-                    (this.plugin as any).syncService.updateConfig(data);
-                }
-                
-
+                this.save(data);
             },
             destroyCallback: () => {
                 //Restore the original value
@@ -124,41 +117,24 @@ export class SettingUtils {
     }
 
     async load() {
-        console.debug(`[SettingUtils] 尝试从文件加载配置: ${this.file}`);
         let data = await this.plugin.loadData(this.file);
-        console.debug(`[SettingUtils] 从文件加载的数据:`, data);
-        console.debug(`[SettingUtils] 当前设置项数量: ${this.settings.size}`);
-        
+        console.debug('Load config:', data);
         if (data) {
-            console.debug(`[SettingUtils] 开始更新设置项值`);
             for (let [key, item] of this.settings) {
-                const oldValue = item.value;
                 item.value = data?.[key] ?? item.value;
-                console.debug(`[SettingUtils] 更新设置项 ${key}: ${oldValue} -> ${item.value}`);
             }
-        } else {
-            console.debug(`[SettingUtils] 没有找到配置文件或文件为空`);
         }
-        
-        const dumpedData = this.dump();
-        this.plugin.data[this.name] = dumpedData;
-        console.debug(`[SettingUtils] 更新plugin.data[${this.name}]:`, dumpedData);
+        this.plugin.data[this.name] = this.dump();
         return data;
     }
 
     async save(data?: any) {
         data = data ?? this.dump();
-        console.debug(`[SettingUtils] 准备保存配置到文件: ${this.file}`);
-        console.debug(`[SettingUtils] 保存的数据:`, data);
-        
         // 保存到文件
         await this.plugin.saveData(this.file, data);
-        console.debug(`[SettingUtils] 配置已保存到文件: ${this.file}`);
-        
         // 同时更新plugin.data中的配置
         this.plugin.data[this.name] = data;
-        console.debug(`[SettingUtils] 已更新plugin.data[${this.name}]:`, data);
-        
+        console.debug('Save config:', data);
         return data;
     }
 
