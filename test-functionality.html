@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>功能测试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            color: #333;
+            border-bottom: 2px solid #007AFF;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .test-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #007AFF;
+        }
+        .status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.pending { background: #fff3cd; color: #856404; }
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        #log {
+            background: #000;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>思源笔记同步插件 - 功能测试</h1>
+    
+    <div class="test-section">
+        <h2 class="test-title">1. 日记识别功能测试</h2>
+        <div class="test-item">
+            <strong>限制日记笔记本:</strong> 
+            <span id="notebook-status" class="status pending">待测试</span>
+            <button onclick="testNotebookLimit()">测试笔记本限制</button>
+        </div>
+        <div class="test-item">
+            <strong>限制日记格式:</strong> 
+            <span id="format-status" class="status pending">待测试</span>
+            <button onclick="testDateFormat()">测试日期格式</button>
+        </div>
+        <div class="test-item">
+            <strong>识别段落:</strong> 
+            <span id="paragraph-status" class="status pending">待测试</span>
+            <button onclick="testParagraphIdentify()">测试段落识别</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">2. 复制项目内容功能测试</h2>
+        <div class="test-item">
+            <strong>复制目标段落:</strong> 
+            <span id="copy-target-status" class="status pending">待测试</span>
+            <button onclick="testCopyTarget()">测试复制目标</button>
+        </div>
+        <div class="test-item">
+            <strong>自动复制机制:</strong> 
+            <span id="auto-copy-status" class="status pending">待测试</span>
+            <button onclick="testAutoCopy()">测试自动复制</button>
+        </div>
+        <div class="test-item">
+            <strong>手动复制机制:</strong> 
+            <span id="manual-copy-status" class="status pending">待测试</span>
+            <button onclick="testManualCopy()">测试手动复制</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">3. 设置管理功能测试</h2>
+        <div class="test-item">
+            <strong>设置保存/加载:</strong> 
+            <span id="settings-status" class="status pending">待测试</span>
+            <button onclick="testSettings()">测试设置管理</button>
+        </div>
+        <div class="test-item">
+            <strong>同步服务集成:</strong> 
+            <span id="sync-service-status" class="status pending">待测试</span>
+            <button onclick="testSyncService()">测试同步服务</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2 class="test-title">测试日志</h2>
+        <div id="log">等待测试开始...\n</div>
+        <button onclick="clearLog()">清空日志</button>
+        <button onclick="runAllTests()">运行所有测试</button>
+    </div>
+
+    <!-- 引入同步服务和设置管理器 -->
+    <script src="sync-service.js"></script>
+    <script src="settings-manager.js"></script>
+
+    <script>
+        let testLog = document.getElementById('log');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+            testLog.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            testLog.scrollTop = testLog.scrollHeight;
+        }
+
+        function updateStatus(elementId, status, message = '') {
+            const element = document.getElementById(elementId);
+            element.className = `status ${status}`;
+            element.textContent = status === 'success' ? '通过' : status === 'error' ? '失败' : '待测试';
+            if (message) {
+                log(message, status);
+            }
+        }
+
+        function clearLog() {
+            testLog.textContent = '';
+        }
+
+        // 测试笔记本限制功能
+        function testNotebookLimit() {
+            log('开始测试笔记本限制功能...');
+            try {
+                if (window.settingsManager) {
+                    const notebooks = window.settingsManager.notebooks;
+                    if (notebooks && notebooks.length > 0) {
+                        updateStatus('notebook-status', 'success', `成功获取 ${notebooks.length} 个笔记本`);
+                    } else {
+                        updateStatus('notebook-status', 'error', '未能获取笔记本列表');
+                    }
+                } else {
+                    updateStatus('notebook-status', 'error', '设置管理器未初始化');
+                }
+            } catch (error) {
+                updateStatus('notebook-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 测试日期格式功能
+        function testDateFormat() {
+            log('开始测试日期格式功能...');
+            try {
+                if (window.settingsManager) {
+                    const formats = window.settingsManager.dateFormats;
+                    if (formats && formats.length > 0) {
+                        updateStatus('format-status', 'success', `支持 ${formats.length} 种日期格式`);
+                    } else {
+                        updateStatus('format-status', 'error', '日期格式列表为空');
+                    }
+                } else {
+                    updateStatus('format-status', 'error', '设置管理器未初始化');
+                }
+            } catch (error) {
+                updateStatus('format-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 测试段落识别功能
+        function testParagraphIdentify() {
+            log('开始测试段落识别功能...');
+            try {
+                if (window.settingsManager) {
+                    const settings = window.settingsManager.settings;
+                    if (settings.paragraphTitle) {
+                        updateStatus('paragraph-status', 'success', `段落标题设置为: ${settings.paragraphTitle}`);
+                    } else {
+                        updateStatus('paragraph-status', 'error', '段落标题未设置');
+                    }
+                } else {
+                    updateStatus('paragraph-status', 'error', '设置管理器未初始化');
+                }
+            } catch (error) {
+                updateStatus('paragraph-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 测试复制目标功能
+        function testCopyTarget() {
+            log('开始测试复制目标功能...');
+            try {
+                if (window.settingsManager) {
+                    const settings = window.settingsManager.settings;
+                    if (settings.copyTargetParagraph) {
+                        updateStatus('copy-target-status', 'success', `复制目标设置为: ${settings.copyTargetParagraph}`);
+                    } else {
+                        updateStatus('copy-target-status', 'error', '复制目标未设置');
+                    }
+                } else {
+                    updateStatus('copy-target-status', 'error', '设置管理器未初始化');
+                }
+            } catch (error) {
+                updateStatus('copy-target-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 测试自动复制功能
+        function testAutoCopy() {
+            log('开始测试自动复制功能...');
+            try {
+                if (window.settingsManager && window.settingsManager.syncService) {
+                    const status = window.settingsManager.getSyncServiceStatus();
+                    if (status) {
+                        updateStatus('auto-copy-status', 'success', `自动复制服务状态: ${status.autoSyncEnabled ? '启用' : '禁用'}`);
+                    } else {
+                        updateStatus('auto-copy-status', 'error', '无法获取同步服务状态');
+                    }
+                } else {
+                    updateStatus('auto-copy-status', 'error', '同步服务未初始化');
+                }
+            } catch (error) {
+                updateStatus('auto-copy-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 测试手动复制功能
+        async function testManualCopy() {
+            log('开始测试手动复制功能...');
+            try {
+                if (window.settingsManager) {
+                    await window.settingsManager.triggerManualSync();
+                    updateStatus('manual-copy-status', 'success', '手动复制测试完成');
+                } else {
+                    updateStatus('manual-copy-status', 'error', '设置管理器未初始化');
+                }
+            } catch (error) {
+                updateStatus('manual-copy-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 测试设置管理功能
+        function testSettings() {
+            log('开始测试设置管理功能...');
+            try {
+                if (window.settingsManager) {
+                    // 测试保存设置
+                    window.settingsManager.saveSettings();
+                    // 测试加载设置
+                    window.settingsManager.loadSettings();
+                    updateStatus('settings-status', 'success', '设置保存/加载功能正常');
+                } else {
+                    updateStatus('settings-status', 'error', '设置管理器未初始化');
+                }
+            } catch (error) {
+                updateStatus('settings-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 测试同步服务集成
+        function testSyncService() {
+            log('开始测试同步服务集成...');
+            try {
+                if (window.SyncService) {
+                    if (window.settingsManager && window.settingsManager.syncService) {
+                        updateStatus('sync-service-status', 'success', '同步服务已成功集成');
+                    } else {
+                        updateStatus('sync-service-status', 'error', '同步服务未正确初始化');
+                    }
+                } else {
+                    updateStatus('sync-service-status', 'error', 'SyncService 类未找到');
+                }
+            } catch (error) {
+                updateStatus('sync-service-status', 'error', `测试失败: ${error.message}`);
+            }
+        }
+
+        // 运行所有测试
+        async function runAllTests() {
+            log('开始运行所有测试...');
+            
+            testNotebookLimit();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            testDateFormat();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            testParagraphIdentify();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            testCopyTarget();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            testAutoCopy();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            await testManualCopy();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            testSettings();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            testSyncService();
+            
+            log('所有测试完成！', 'success');
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', function() {
+            log('页面加载完成，开始初始化...');
+            
+            // 等待设置管理器初始化
+            setTimeout(() => {
+                if (window.settingsManager) {
+                    log('设置管理器初始化成功', 'success');
+                } else {
+                    log('设置管理器初始化失败', 'error');
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
  * 负责笔记本选择、叶子文档检测、日期格式生成等功能
  */
 
-import { lsNotebooks, sql } from "./api";
+import { lsNotebooks, sql, getBlockKramdown, getChildBlocks } from "./api";
 
 export interface NotebookInfo {
     id: string;
@@ -304,48 +304,221 @@ export class NotebookService {
     }
 
     /**
-     * 从指定标题下提取内容
+     * 从指定标题下提取内容（使用 API 获取子块，保证顺序正确）
      */
     async extractContentUnderTitle(documentId: string, title: string): Promise<string[]> {
         try {
-            const query = `
-                SELECT b.id, b.content, b.type, b.subtype
+            console.log(`\n📖 [${title}] 开始提取文档 ${documentId} 的内容`);
+            
+            // 第一步：查找标题块
+            const findTitleQuery = `
+                SELECT b.id, b.type, b.subtype, b.content
                 FROM blocks b
                 WHERE b.root_id = '${documentId}'
-                ORDER BY b.created
+                AND b.type = 'h'
+                AND b.content LIKE '%${title}%'
+                LIMIT 1
             `;
             
-            const blocks = await sql(query);
-            const contents: string[] = [];
-            let foundTitle = false;
-            let titleLevel = 0;
+            const titleResults = await sql(findTitleQuery);
+            if (!titleResults || titleResults.length === 0) {
+                console.log(`⚠️  [${title}] 未找到标题块`);
+                return [];
+            }
             
-            for (const block of blocks) {
-                // 检查是否是标题块
-                if (block.type === 'h') {
-                    const currentLevel = parseInt(block.subtype?.replace('h', '') || '1');
-                    
-                    if (block.content.includes(title)) {
-                        foundTitle = true;
-                        titleLevel = currentLevel;
-                        continue;
-                    } else if (foundTitle && currentLevel <= titleLevel) {
-                        // 遇到同级或更高级标题，停止提取
-                        break;
-                    }
-                }
+            const titleBlock = titleResults[0];
+            console.log(`✅ [${title}] 找到标题块: id=${titleBlock.id}, type=${titleBlock.subtype}`);
+            
+            // 第二步：使用 API 获取标题块的子块（API 返回的顺序是正确的文档顺序）
+            const contentBlocks = await getChildBlocks(titleBlock.id);
+            console.log(`📦 [${title}] 标题块有 ${contentBlocks.length} 个子块`);
+            
+            if (contentBlocks.length === 0) {
+                console.log(`⚠️  [${title}] 标题下没有内容`);
+                return [];
+            }
+            
+            // 第三步：获取每个块的完整 kramdown 内容（保持 API 返回的顺序）
+            const allContent = [];
+            console.log(`📝 [${title}] 提取内容块（按 API 返回的文档顺序）:`);
+            
+            for (let i = 0; i < contentBlocks.length; i++) {
+                const block = contentBlocks[i];
                 
-                // 如果找到了目标标题，开始收集内容
-                if (foundTitle && block.content && block.content.trim()) {
-                    contents.push(this.cleanBlockContent(block.content));
+                // 使用 getBlockKramdown 获取完整内容（包含引用）
+                const blockDetail = await getBlockKramdown(block.id);
+                if (blockDetail && blockDetail.kramdown) {
+                    const content = blockDetail.kramdown.trim();
+                    if (content) {
+                        allContent.push(content);
+                        // 显示完整内容以便调试
+                        const displayContent = content.length > 80 ? content.substring(0, 80) + '...' : content;
+                        console.log(`  ${i+1}. [${block.type}] id=${block.id}`);
+                        console.log(`      内容: ${displayContent}`);
+                    }
                 }
             }
             
-            return contents;
+            // 第四步：合并内容（每个块之间用单个换行分隔，因为 kramdown 内容本身可能包含换行）
+            const fullContent = allContent.join('\n');
+            console.log(`\n📝 [${title}] 合并后内容长度: ${fullContent.length} 字符`);
+            console.log(`📝 [${title}] 完整内容:\n${'─'.repeat(60)}\n${fullContent}\n${'─'.repeat(60)}`);
+            
+            // 第五步：解析项目引用
+            const results = this.parseProjectContentRelations(fullContent);
+            console.log(`🎯 [${title}] 解析出 ${results.length} 个项目内容\n`);
+            
+            return results;
+             
         } catch (error) {
-            console.error("提取标题下内容失败:", error);
+            console.error(`❌ [${title}] 提取失败:`, error);
             return [];
         }
+    }
+    
+    /**
+     * 改进的项目内容关系解析（优化日志版）
+     * 实现：项目引用A后的所有内容归属到A，直到遇到下一个项目引用B/二级标题/空白行无内容时
+     */
+    private parseProjectContentRelations(content: string): string[] {
+        const results: string[] = [];
+        const lines = content.split('\n');
+        
+        let currentProjectContent = '';
+        let hasProjectRef = false;
+        let emptyLineBuffer: string[] = [];
+        let projectCount = 0;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trim();
+            
+            // 遇到二级标题，结束当前项目
+            if (trimmedLine.startsWith('## ')) {
+                if (hasProjectRef && currentProjectContent.trim()) {
+                    results.push(this.preserveOriginalFormat(currentProjectContent));
+                    projectCount++;
+                }
+                currentProjectContent = '';
+                hasProjectRef = false;
+                emptyLineBuffer = [];
+                continue;
+            }
+            
+            // 检查是否是项目引用
+            const hasRef = this.containsProjectReference(trimmedLine);
+            
+            if (hasRef) {
+                // 保存前一个项目内容
+                if (hasProjectRef && currentProjectContent.trim()) {
+                    results.push(this.preserveOriginalFormat(currentProjectContent));
+                    projectCount++;
+                }
+                
+                // 开始新的项目内容
+                currentProjectContent = line;
+                hasProjectRef = true;
+                emptyLineBuffer = [];
+                
+                // 提取项目名称用于日志
+                const projectNameMatch = trimmedLine.match(/['"]([^'"]+)['"]/);
+                const projectName = projectNameMatch ? projectNameMatch[1] : '未知项目';
+                console.log(`  🔗 发现项目引用: ${projectName}`);
+            } else if (hasProjectRef) {
+                if (!trimmedLine) {
+                    emptyLineBuffer.push(line);
+                    
+                    if (emptyLineBuffer.length >= 2) {
+                        const hasFollowingContent = this.hasFollowingNonEmptyContent(lines, i);
+                        if (!hasFollowingContent) {
+                            results.push(this.preserveOriginalFormat(currentProjectContent));
+                            projectCount++;
+                            currentProjectContent = '';
+                            hasProjectRef = false;
+                            emptyLineBuffer = [];
+                        }
+                    }
+                } else {
+                    // 累积内容
+                    for (const emptyLine of emptyLineBuffer) {
+                        currentProjectContent += '\n' + emptyLine;
+                    }
+                    currentProjectContent += '\n' + line;
+                    emptyLineBuffer = [];
+                }
+            }
+        }
+        
+        // 处理最后一个项目
+        if (hasProjectRef && currentProjectContent.trim()) {
+            results.push(this.preserveOriginalFormat(currentProjectContent));
+            projectCount++;
+        }
+        
+        if (projectCount > 0) {
+            console.log(`  ✅ 共解析出 ${projectCount} 个项目引用`);
+        }
+        
+        return results;
+    }
+    
+    /**
+     * 向前查看是否有非空内容
+     * 用于判断是否应该结束当前项目内容的收集
+     */
+    private hasFollowingNonEmptyContent(lines: string[], currentIndex: number): boolean {
+        for (let i = currentIndex + 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line) {
+                // 如果遇到二级标题或新的项目引用，返回 false
+                if (line.startsWith('## ') || this.containsProjectReference(line)) {
+                    return false;
+                }
+                // 有其他非空内容
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * 保持原始格式，只进行最基本的清理
+     */
+    private preserveOriginalFormat(content: string): string {
+        console.log(`🧹 [格式清理] 原始内容长度: ${content.length}`);
+        console.log(`🧹 [格式清理] 原始内容预览: ${content.substring(0, 100)}...`);
+        
+        // 移除 kramdown 元数据，保持其他格式
+        let cleaned = content
+            // 移除单独一行的 kramdown 元数据
+            .replace(/^\s*\{:\s*[^}]*\}\s*$/gm, '')
+            // 移除行内的 kramdown 元数据（更强的匹配）
+            .replace(/\{:\s*[^}]*\}/g, '')
+            // 移除多余的空行（连续的空行合并为一个）
+            .replace(/\n\s*\n\s*\n+/g, '\n\n')
+            // 移除开头和结尾的多余空行
+            .replace(/^\s*\n+/, '')
+            .replace(/\n+\s*$/, '');
+        
+        console.log(`🧹 [格式清理] 清理后长度: ${cleaned.length}`);
+        console.log(`🧹 [格式清理] 清理后预览: ${cleaned.substring(0, 100)}...`);
+        
+        return cleaned;
+    }
+    
+    /**
+     * 改进的项目引用检测
+     * 检查文本是否包含项目引用，支持多种格式
+     */
+    private containsProjectReference(text: string): boolean {
+        // 检查各种项目引用格式
+        const patterns = [
+            /\(\(\d{14}-[a-z0-9]{7}\s+['"][^'"]+['"]\)\)/,  // ((blockId 'name')) - 更严格的格式检查
+            /\[\[[^\]]+\]\]/,                                 // [[项目名]]
+            /\[([^\]]+)\]\([^)]+\)/                          // [显示文本](链接)
+        ];
+        
+        return patterns.some(pattern => pattern.test(text));
     }
 
     /**
@@ -389,11 +562,31 @@ export class NotebookService {
     private cleanBlockContent(content: string): string {
         if (!content) return "";
         
-        return content
-            .replace(/<[^>]*>/g, '') // 移除HTML标签
-            .replace(/\{\{[^}]*\}\}/g, '') // 移除模板语法
-            .replace(/\[\[([^\]]*)\]\]/g, '$1') // 处理内部链接
-            .replace(/\s+/g, ' ') // 合并多个空白字符
+        let cleaned = content;
+        
+        // 移除各种 kramdown 元数据格式
+        cleaned = cleaned
+            // 移除单独一行的元数据 {: id="..." updated="..."}
+            .replace(/^\s*\{:\s*[^}]*\}\s*$/gm, '')
+            // 移除行内的元数据 {: id="..." updated="..."}
+            .replace(/\s*\{:\s*[^}]*\}\s*/g, ' ')
+            // 移除HTML标签
+            .replace(/<[^>]*>/g, '')
+            // 移除模板语法
+            .replace(/\{\{[^}]*\}\}/g, '')
+            // 处理内部链接，保留显示文本
+            .replace(/\[\[([^\]]*)\]\]/g, '$1')
+            // 移除多余的空行（连续的换行符）
+            .replace(/\n\s*\n\s*\n/g, '\n\n')
+            // 合并多个空白字符（但保留换行）
+            .replace(/[ \t]+/g, ' ')
+            // 移除行首行尾的空白
+            .replace(/^[ \t]+|[ \t]+$/gm, '')
             .trim();
+        
+        console.log(`🧹 [内容清理] 原始: "${content.substring(0, 100)}..."`);
+        console.log(`🧹 [内容清理] 清理后: "${cleaned.substring(0, 100)}..."`);
+        
+        return cleaned;
     }
 }

@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SiYuan 日记项目同步插件 - 设置面板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #e0e7ff;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            --radius-sm: 0.375rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-xl: 1rem;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: var(--gray-800);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 700px;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            background: var(--gray-50);
+            border-right: 1px solid var(--gray-200);
+            padding: 2rem 0;
+        }
+
+        .sidebar-header {
+            padding: 0 2rem 2rem;
+            border-bottom: 1px solid var(--gray-200);
+            margin-bottom: 2rem;
+        }
+
+        .app-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--gray-900);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .app-icon {
+            width: 2rem;
+            height: 2rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1rem;
+        }
+
+        .nav-menu {
+            list-style: none;
+        }
+
+        .nav-item {
+            margin-bottom: 0.25rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 2rem;
+            color: var(--gray-600);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border-right: 3px solid transparent;
+            cursor: pointer;
+        }
+
+        .nav-link:hover {
+            background: var(--gray-100);
+            color: var(--primary-color);
+        }
+
+        .nav-link.active {
+            background: var(--primary-light);
+            color: var(--primary-color);
+            border-right-color: var(--primary-color);
+        }
+
+        .nav-icon {
+            font-size: 1.125rem;
+            width: 1.25rem;
+            text-align: center;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .content-header {
+            padding: 2rem 2.5rem 1.5rem;
+            border-bottom: 1px solid var(--gray-200);
+            background: white;
+        }
+
+        .page-title {
+            font-size: 1.875rem;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 0.5rem;
+        }
+
+        .page-description {
+            color: var(--gray-600);
+            font-size: 1rem;
+        }
+
+        .content-body {
+            flex: 1;
+            padding: 2rem 2.5rem;
+            overflow-y: auto;
+        }
+
+        /* 设置组 */
+        .settings-group {
+            background: white;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-lg);
+            margin-bottom: 2rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .group-header {
+            background: var(--gray-50);
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .group-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--gray-900);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .group-icon {
+            width: 2rem;
+            height: 2rem;
+            background: var(--primary-color);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.875rem;
+        }
+
+        .group-description {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+
+        .group-content {
+            padding: 0;
+        }
+
+        /* 设置项 */
+        .setting-item {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--gray-100);
+            transition: background-color 0.2s ease;
+        }
+
+        .setting-item:last-child {
+            border-bottom: none;
+        }
+
+        .setting-item:hover {
+            background: var(--gray-50);
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 2rem;
+        }
+
+        .setting-info {
+            flex: 1;
+        }
+
+        .setting-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--gray-900);
+            margin-bottom: 0.25rem;
+        }
+
+        .setting-description {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            line-height: 1.5;
+        }
+
+        .setting-control {
+            flex-shrink: 0;
+            min-width: 250px;
+        }
+
+        /* 表单控件 */
+        .form-input,
+        .form-select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--gray-300);
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            background: white;
+            transition: all 0.2s ease;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+
+        .form-select {
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.75rem center;
+            background-repeat: no-repeat;
+            background-size: 1rem;
+            padding-right: 2.5rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 3rem;
+            height: 1.5rem;
+        }
+
+        .toggle-input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--gray-300);
+            transition: 0.3s;
+            border-radius: 1.5rem;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 1.125rem;
+            width: 1.125rem;
+            left: 0.1875rem;
+            bottom: 0.1875rem;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-input:checked + .toggle-slider {
+            background-color: var(--primary-color);
+        }
+
+        .toggle-input:checked + .toggle-slider:before {
+            transform: translateX(1.5rem);
+        }
+
+        /* 单选按钮组 */
+        .radio-group {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .radio-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        .radio-input {
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid var(--gray-300);
+            border-radius: 50%;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .radio-input:checked {
+            border-color: var(--primary-color);
+        }
+
+        .radio-input:checked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 0.5rem;
+            height: 0.5rem;
+            background: var(--primary-color);
+            border-radius: 50%;
+        }
+
+        .radio-label {
+            font-size: 0.875rem;
+            color: var(--gray-700);
+            cursor: pointer;
+        }
+
+        /* 按钮 */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-300);
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        /* 底部操作栏 */
+        .action-bar {
+            padding: 1.5rem 2.5rem;
+            border-top: 1px solid var(--gray-200);
+            background: var(--gray-50);
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+
+        /* 标签页内容 */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* 提示信息 */
+        .help-text {
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            margin-top: 0.5rem;
+            font-style: italic;
+        }
+
+        /* 快捷键输入框 */
+        .shortcut-input {
+            position: relative;
+        }
+
+        .shortcut-display {
+            background: var(--gray-100);
+            border: 1px solid var(--gray-300);
+            border-radius: var(--radius-md);
+            padding: 0.75rem 1rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: var(--gray-700);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .shortcut-display:hover {
+            border-color: var(--primary-color);
+        }
+
+        .shortcut-display.recording {
+            border-color: var(--warning-color);
+            background: #fef3c7;
+            color: var(--warning-color);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .app-container {
+                grid-template-columns: 1fr;
+                margin: 1rem;
+            }
+            
+            .sidebar {
+                display: none;
+            }
+            
+            .setting-row {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .setting-control {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="app-title">
+                    <div class="app-icon">📝</div>
+                    <span>日记同步设置</span>
+                </div>
+            </div>
+            <nav>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-tab="diary-recognition">
+                            <span class="nav-icon">🔍</span>
+                            <span>日记识别要求</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-tab="copy-settings">
+                            <span class="nav-icon">📋</span>
+                            <span>复制项目内容</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <div class="content-header">
+                <h1 class="page-title">日记项目同步设置</h1>
+                <p class="page-description">配置日记识别规则和项目内容复制机制</p>
+            </div>
+
+            <div class="content-body">
+                <!-- 日记识别要求 -->
+                <div class="tab-content active" data-tab="diary-recognition">
+                    <!-- 限制日记笔记本 -->
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <div class="group-title">
+                                <div class="group-icon">📚</div>
+                                <span>限制日记笔记本</span>
+                            </div>
+                            <div class="group-description">限制日记查找路径在哪个笔记本下，其他笔记本不可查找</div>
+                        </div>
+                        <div class="group-content">
+                            <div class="setting-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">启用笔记本限制</div>
+                                        <div class="setting-description">开启后只在指定笔记本中查找日记，关闭则在所有笔记本中查找</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" class="toggle-input" id="enableNotebookLimit">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="setting-item" id="notebookSelector" style="display: none;">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">选择日记笔记本</div>
+                                        <div class="setting-description">选择用于存储日记的笔记本，系统将只在此笔记本中查找日记文档</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <select class="form-select" id="diaryNotebook">
+                                            <option value="">正在加载笔记本...</option>
+                                        </select>
+                                        <div class="help-text">💡 建议选择专门用于日记的笔记本以提高查找效率</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 限制日记格式 -->
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <div class="group-title">
+                                <div class="group-icon">📅</div>
+                                <span>限制日记格式</span>
+                            </div>
+                            <div class="group-description">设置日记文档的命名格式，用于精确匹配日记文档</div>
+                        </div>
+                        <div class="group-content">
+                            <div class="setting-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">日记格式</div>
+                                        <div class="setting-description">设置日记文档的日期格式，系统将根据此格式查找对应的日记文档</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <select class="form-select" id="dateFormat">
+                                            <option value="YYYY-MM-DD">YYYY-MM-DD (如: 2024-01-15)</option>
+                                            <option value="YY-MM-DD" selected>YY-MM-DD (如: 24-01-15)</option>
+                                            <option value="YYYY年MM月DD日">YYYY年MM月DD日 (如: 2024年01月15日)</option>
+                                            <option value="YYYY/MM/DD">YYYY/MM/DD (如: 2024/01/15)</option>
+                                            <option value="YYYY.MM.DD">YYYY.MM.DD (如: 2024.01.15)</option>
+                                            <option value="custom">自定义格式</option>
+                                        </select>
+                                        <div class="help-text">📝 默认格式为 YY-MM-DD，支持自定义格式</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="setting-item" id="customFormatInput" style="display: none;">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">自定义日期格式</div>
+                                        <div class="setting-description">输入自定义的日期格式，支持正则表达式</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="text" class="form-input" id="customDateFormat" placeholder="如: YYYY-MM-DD 或正则表达式">
+                                        <div class="help-text">⚠️ 请确保格式正确，错误的格式可能导致无法找到日记</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 识别段落 -->
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <div class="group-title">
+                                <div class="group-icon">📖</div>
+                                <span>识别段落</span>
+                            </div>
+                            <div class="group-description">设置要提取内容的段落标题（可选功能）</div>
+                        </div>
+                        <div class="group-content">
+                            <div class="setting-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">启用段落识别</div>
+                                        <div class="setting-description">开启后只提取指定段落的内容，关闭则提取整个文档内容</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" class="toggle-input" id="enableParagraphIdentify" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="setting-item" id="paragraphSettings">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">段落标题</div>
+                                        <div class="setting-description">指定要提取内容的段落标题，系统将查找此标题下的所有内容</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="text" class="form-input" id="contentTitle" value="##今日进展" placeholder="如: ##今日进展">
+                                        <div class="help-text">🎯 默认为 "##今日进展"，支持 Markdown 标题格式</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 复制项目内容要求 -->
+                <div class="tab-content" data-tab="copy-settings">
+                    <!-- 复制目标段落 -->
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <div class="group-title">
+                                <div class="group-icon">🎯</div>
+                                <span>复制目标段落</span>
+                            </div>
+                            <div class="group-description">设置将日记内容复制到项目文档的哪个段落（可选功能）</div>
+                        </div>
+                        <div class="group-content">
+                            <div class="setting-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">启用目标段落</div>
+                                        <div class="setting-description">开启后复制到指定段落，关闭则复制到文档末尾</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" class="toggle-input" id="enableTargetParagraph" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="setting-item" id="targetParagraphSettings">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">目标段落标题</div>
+                                        <div class="setting-description">指定项目文档中用于接收日记内容的段落标题</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="text" class="form-input" id="targetTitle" value="##项目进展" placeholder="如: ##项目进展">
+                                        <div class="help-text">📌 默认为 "##项目进展"，内容将复制到此标题下</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 复制机制 -->
+                    <div class="settings-group">
+                        <div class="group-header">
+                            <div class="group-title">
+                                <div class="group-icon">⚙️</div>
+                                <span>复制机制</span>
+                            </div>
+                            <div class="group-description">配置内容复制的触发方式和时间设置</div>
+                        </div>
+                        <div class="group-content">
+                            <!-- 复制模式选择 -->
+                            <div class="setting-item">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">复制模式</div>
+                                        <div class="setting-description">选择内容复制的触发方式</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <div class="radio-group">
+                                            <label class="radio-item">
+                                                <input type="radio" name="copyMode" value="auto" class="radio-input" checked>
+                                                <span class="radio-label">自动复制</span>
+                                            </label>
+                                            <label class="radio-item">
+                                                <input type="radio" name="copyMode" value="manual" class="radio-input">
+                                                <span class="radio-label">手动复制</span>
+                                            </label>
+                                        </div>
+                                        <div class="help-text">🤖 自动复制：检测到停止输入后自动触发 | 👆 手动复制：通过快捷键手动触发</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 自动复制时间设置 -->
+                            <div class="setting-item" id="autoTimeSettings" style="display: block;">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">自动复制时间</div>
+                                        <div class="setting-description">设置检测到停止输入后多长时间自动触发复制</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <input type="number" class="form-input" id="autoDelay" value="10" min="1" max="300" placeholder="秒数">
+                                        <div class="help-text">⏱️ 默认10秒，范围1-300秒，建议设置5-30秒</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 手动复制快捷键 -->
+                            <div class="setting-item" id="manualShortcutSettings" style="display: none;">
+                                <div class="setting-row">
+                                    <div class="setting-info">
+                                        <div class="setting-title">手动复制快捷键</div>
+                                        <div class="setting-description">设置手动触发复制的快捷键组合</div>
+                                    </div>
+                                    <div class="setting-control">
+                                        <div class="shortcut-input">
+                                            <div class="shortcut-display" id="shortcutDisplay" data-shortcut="cmd+click">
+                                                Command + 左键点击
+                                            </div>
+                                        </div>
+                                        <div class="help-text">⌨️ 点击上方区域录制新的快捷键组合</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 底部操作栏 -->
+            <div class="action-bar">
+                <button class="btn btn-secondary" onclick="resetSettings()">重置设置</button>
+                <button class="btn btn-info" onclick="testManualSync()">测试同步</button>
+                <button class="btn btn-success" onclick="testConfig()">测试配置</button>
+                <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- 引入同步服务 -->
+    <script src="sync-service.js"></script>
+    <!-- 引入设置管理器 -->
+    <script src="settings-manager.js"></script>
+</body>
+</html>

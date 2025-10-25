@@ -38,7 +38,10 @@ export default defineConfig({
                 { src: "./README*.md", dest: "./" },
                 { src: "./plugin.json", dest: "./" },
                 { src: "./preview.png", dest: "./" },
-                { src: "./icon.png", dest: "./" }
+                { src: "./icon.png", dest: "./" },
+                { src: "./redesigned-settings.html", dest: "./" },
+                { src: "./settings-manager.js", dest: "./" },
+                { src: "./sync-service.js", dest: "./" }
             ],
         }),
 
@@ -70,7 +73,10 @@ export default defineConfig({
                             const files = await fg([
                                 'public/i18n/**',
                                 './README*.md',
-                                './plugin.json'
+                                './plugin.json',
+                                './redesigned-settings.html',
+                                './settings-manager.js',
+                                './sync-service.js'
                             ]);
                             for (let file of files) {
                                 this.addWatchFile(file);

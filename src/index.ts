@@ -93,17 +93,61 @@ export default class DailyProgressSyncPlugin extends Plugin {
                     autoSyncEnabled: true,
                     autoSyncDelay: 10000, // 10秒
                     useTemplatePattern: false,
-                    dateFormat: "YYYY-MM-DD",
-                    contentTitle: "今日进展",
+                    dateFormat: "YYYY-MM-DD",        // 默认日期格式
+                    contentTitle: "今日进展",         // 默认提取标题
                     onlyLeafDocuments: false,
-                    enableNotebookLimitation: false,
+                    enableNotebookLimitation: true,   // 默认启用笔记本限定
                     selectedNotebookId: "",
-                    selectedNotebookName: ""
+                    selectedNotebookName: "",
+                    // 复制设置默认值
+                    enableTargetTitle: true,          // 默认启用复制目标标题
+                    targetTitleType: "h2",           // 默认二级标题
+                    targetTitlePattern: "## ",       // 默认二级标题模式
+                    targetTitleContent: "项目进展",   // 默认目标段落
+                    enableManualCopy: true,          // 默认启用手动复制
+                    enableAutoCopy: true,            // 默认启用自动复制
+                    autoCopyTime: 10,                // 默认10秒
+                    manualCopyHotkey: "Cmd+Shift+C", // 默认快捷键
+                    // 识别设置默认值
+                    enableContentExtraction: false,   // 默认不启用内容提取
+                    enableTitleExtraction: false,    // 默认不启用标题提取
+                    titleExtractionType: "h1",       // 默认一级标题
+                    titleExtractionPattern: "# "     // 默认一级标题模式
                 };
                 // 保存默认配置到存储
                 await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
                 logger.info("默认配置已设置并保存", this.data[STORAGE_NAME]);
             } else {
+                // 确保现有配置有默认值，并修复可能的错误配置
+                this.data[STORAGE_NAME].dateFormat = this.data[STORAGE_NAME].dateFormat || "YYYY-MM-DD";
+                
+                // 修复错误的 contentTitle 值（如 "今日进展313"）
+                const currentContentTitle = this.data[STORAGE_NAME].contentTitle;
+                if (!currentContentTitle || currentContentTitle.includes("313") || currentContentTitle === "项目进度") {
+                    console.log(`🔧 [修复] 检测到错误的 contentTitle: "${currentContentTitle}"，重置为默认值`);
+                    this.data[STORAGE_NAME].contentTitle = "今日进展";
+                    // 保存修复后的配置
+                    await this.saveData(STORAGE_NAME, this.data[STORAGE_NAME]);
+                } else {
+                    this.data[STORAGE_NAME].contentTitle = currentContentTitle;
+                }
+                
+                // 确保复制设置有默认值
+                this.data[STORAGE_NAME].enableTargetTitle = this.data[STORAGE_NAME].enableTargetTitle ?? true;
+                this.data[STORAGE_NAME].targetTitleType = this.data[STORAGE_NAME].targetTitleType || "h2";
+                this.data[STORAGE_NAME].targetTitlePattern = this.data[STORAGE_NAME].targetTitlePattern || "## ";
+                this.data[STORAGE_NAME].targetTitleContent = this.data[STORAGE_NAME].targetTitleContent || "项目进展";
+                this.data[STORAGE_NAME].enableManualCopy = this.data[STORAGE_NAME].enableManualCopy ?? true;
+                this.data[STORAGE_NAME].enableAutoCopy = this.data[STORAGE_NAME].enableAutoCopy ?? true;
+                this.data[STORAGE_NAME].autoCopyTime = this.data[STORAGE_NAME].autoCopyTime || 10;
+                this.data[STORAGE_NAME].manualCopyHotkey = this.data[STORAGE_NAME].manualCopyHotkey || "Cmd+Shift+C";
+                
+                // 确保识别设置有默认值
+                this.data[STORAGE_NAME].enableContentExtraction = this.data[STORAGE_NAME].enableContentExtraction ?? false;
+                this.data[STORAGE_NAME].enableTitleExtraction = this.data[STORAGE_NAME].enableTitleExtraction ?? false;
+                this.data[STORAGE_NAME].titleExtractionType = this.data[STORAGE_NAME].titleExtractionType || "h1";
+                this.data[STORAGE_NAME].titleExtractionPattern = this.data[STORAGE_NAME].titleExtractionPattern || "# ";
+                
                 logger.info("加载现有配置", this.data[STORAGE_NAME]);
             }
 
@@ -115,16 +159,39 @@ export default class DailyProgressSyncPlugin extends Plugin {
                 progressSection: this.data[STORAGE_NAME].progressSection,
                 autoSyncEnabled: this.data[STORAGE_NAME].autoSyncEnabled,
                 autoSyncDelay: this.data[STORAGE_NAME].autoSyncDelay / 1000, // 转换为秒
-                useTemplatePattern: this.data[STORAGE_NAME].useTemplatePattern || false,
-                dateFormat: this.data[STORAGE_NAME].dateFormat || "YYYY-MM-DD",
-                contentTitle: this.data[STORAGE_NAME].contentTitle || "今日进展",
-                onlyLeafDocuments: this.data[STORAGE_NAME].onlyLeafDocuments || false,
-                enableNotebookLimitation: this.data[STORAGE_NAME].enableNotebookLimitation || false,
-                selectedNotebookId: this.data[STORAGE_NAME].selectedNotebookId || "",
-                selectedNotebookName: this.data[STORAGE_NAME].selectedNotebookName || ""
+                useTemplatePattern: this.data[STORAGE_NAME].useTemplatePattern ?? false,
+                dateFormat: this.data[STORAGE_NAME].dateFormat ?? "YYYY-MM-DD",
+                contentTitle: this.data[STORAGE_NAME].contentTitle ?? "今日进展",
+                onlyLeafDocuments: this.data[STORAGE_NAME].onlyLeafDocuments ?? false,
+                enableNotebookLimitation: this.data[STORAGE_NAME].enableNotebookLimitation ?? false,
+                selectedNotebookId: this.data[STORAGE_NAME].selectedNotebookId ?? "",
+                selectedNotebookName: this.data[STORAGE_NAME].selectedNotebookName ?? "",
+                // 内容提取和识别配置
+                enableContentExtraction: this.data[STORAGE_NAME].enableContentExtraction ?? false,
+                enableTitleExtraction: this.data[STORAGE_NAME].enableTitleExtraction ?? false,
+                titleExtractionType: this.data[STORAGE_NAME].titleExtractionType ?? "h1",
+                titleExtractionPattern: this.data[STORAGE_NAME].titleExtractionPattern ?? "# ",
+                // 复制目标配置
+                enableTargetTitle: this.data[STORAGE_NAME].enableTargetTitle ?? true,
+                targetTitleType: this.data[STORAGE_NAME].targetTitleType ?? "h2",
+                targetTitlePattern: this.data[STORAGE_NAME].targetTitlePattern ?? "## ",
+                targetTitleContent: this.data[STORAGE_NAME].targetTitleContent ?? "项目进展",
+                // 复制机制配置
+                enableManualCopy: this.data[STORAGE_NAME].enableManualCopy ?? true,
+                enableAutoCopy: this.data[STORAGE_NAME].enableAutoCopy ?? true,
+                autoCopyTime: this.data[STORAGE_NAME].autoCopyTime ?? 10,
+                manualCopyHotkey: this.data[STORAGE_NAME].manualCopyHotkey ?? "Cmd+Shift+C"
             };
             logger.info("同步服务配置", config);
-            this.syncService = new SyncService(config);
+            console.log("🔍 [配置调试] 原始存储数据:", this.data[STORAGE_NAME]);
+            console.log("🔍 [配置调试] 最终配置对象:", config);
+            console.log("🔍 [配置调试] enableNotebookLimitation:", config.enableNotebookLimitation);
+            console.log("🔍 [配置调试] selectedNotebookId:", config.selectedNotebookId);
+            
+            // 调试：打印完整的存储数据
+        console.log("🔍 [调试] 完整的 this.data:", this.data);
+        
+        this.syncService = new SyncService(config);
             logger.info("同步服务初始化完成");
 
             // 添加图标
@@ -351,7 +418,8 @@ export default class DailyProgressSyncPlugin extends Plugin {
                 target: container,
                 props: {
                     plugin: this,
-                    config: this.data[STORAGE_NAME]
+                    config: this.data[STORAGE_NAME],
+                    syncService: this.syncService
                 }
             });
         }
