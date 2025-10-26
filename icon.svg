@@ -1,0 +1,36 @@
+<svg width="160" height="160" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆形 -->
+  <circle cx="80" cy="80" r="75" fill="#4A90E2" stroke="#357ABD" stroke-width="2"/>
+  
+  <!-- 日记本主体 -->
+  <rect x="35" y="45" width="70" height="80" rx="3" fill="#FFFFFF" stroke="#CCCCCC" stroke-width="1"/>
+  
+  <!-- 日记本装订线 -->
+  <line x1="50" y1="45" x2="50" y2="125" stroke="#E0E0E0" stroke-width="1"/>
+  <line x1="55" y1="45" x2="55" y2="125" stroke="#E0E0E0" stroke-width="1"/>
+  
+  <!-- 日记本内容线条 -->
+  <line x1="60" y1="60" x2="95" y2="60" stroke="#CCCCCC" stroke-width="1"/>
+  <line x1="60" y1="70" x2="90" y2="70" stroke="#CCCCCC" stroke-width="1"/>
+  <line x1="60" y1="80" x2="95" y2="80" stroke="#CCCCCC" stroke-width="1"/>
+  <line x1="60" y1="90" x2="85" y2="90" stroke="#CCCCCC" stroke-width="1"/>
+  <line x1="60" y1="100" x2="95" y2="100" stroke="#CCCCCC" stroke-width="1"/>
+  <line x1="60" y1="110" x2="90" y2="110" stroke="#CCCCCC" stroke-width="1"/>
+  
+  <!-- 同步箭头背景圆形 -->
+  <circle cx="115" cy="105" r="18" fill="#FF6B6B" stroke="#E74C3C" stroke-width="2"/>
+  
+  <!-- 同步箭头 -->
+  <g transform="translate(115, 105)">
+    <!-- 顺时针箭头 -->
+    <path d="M -8 -8 A 8 8 0 1 1 8 8" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+    <polygon points="6,6 12,6 9,12" fill="#FFFFFF"/>
+    
+    <!-- 逆时针箭头 -->
+    <path d="M 8 8 A 8 8 0 1 1 -8 -8" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+    <polygon points="-6,-6 -12,-6 -9,-12" fill="#FFFFFF"/>
+  </g>
+  
+  <!-- 日记本标题 -->
+  <text x="70" y="58" font-family="Arial, sans-serif" font-size="8" fill="#666666" text-anchor="middle">DIARY</text>
+</svg>

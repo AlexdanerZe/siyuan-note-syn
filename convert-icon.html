@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG转PNG工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            margin: 20px;
+        }
+        button {
+            background: #4A90E2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #357ABD;
+        }
+        .icon-preview {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            align-items: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>思源笔记同步插件图标生成器</h1>
+        
+        <div class="icon-preview">
+            <div>
+                <h3>SVG预览</h3>
+                <svg id="iconSvg" width="160" height="160" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+                    <!-- 背景圆形 -->
+                    <circle cx="80" cy="80" r="75" fill="#4A90E2" stroke="#357ABD" stroke-width="2"/>
+                    
+                    <!-- 日记本主体 -->
+                    <rect x="35" y="45" width="70" height="80" rx="3" fill="#FFFFFF" stroke="#CCCCCC" stroke-width="1"/>
+                    
+                    <!-- 日记本装订线 -->
+                    <line x1="50" y1="45" x2="50" y2="125" stroke="#E0E0E0" stroke-width="1"/>
+                    <line x1="55" y1="45" x2="55" y2="125" stroke="#E0E0E0" stroke-width="1"/>
+                    
+                    <!-- 日记本内容线条 -->
+                    <line x1="60" y1="60" x2="95" y2="60" stroke="#CCCCCC" stroke-width="1"/>
+                    <line x1="60" y1="70" x2="90" y2="70" stroke="#CCCCCC" stroke-width="1"/>
+                    <line x1="60" y1="80" x2="95" y2="80" stroke="#CCCCCC" stroke-width="1"/>
+                    <line x1="60" y1="90" x2="85" y2="90" stroke="#CCCCCC" stroke-width="1"/>
+                    <line x1="60" y1="100" x2="95" y2="100" stroke="#CCCCCC" stroke-width="1"/>
+                    <line x1="60" y1="110" x2="90" y2="110" stroke="#CCCCCC" stroke-width="1"/>
+                    
+                    <!-- 同步箭头背景圆形 -->
+                    <circle cx="115" cy="105" r="18" fill="#FF6B6B" stroke="#E74C3C" stroke-width="2"/>
+                    
+                    <!-- 同步箭头 -->
+                    <g transform="translate(115, 105)">
+                        <!-- 顺时针箭头 -->
+                        <path d="M -8 -8 A 8 8 0 1 1 8 8" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+                        <polygon points="6,6 12,6 9,12" fill="#FFFFFF"/>
+                        
+                        <!-- 逆时针箭头 -->
+                        <path d="M 8 8 A 8 8 0 1 1 -8 -8" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+                        <polygon points="-6,-6 -12,-6 -9,-12" fill="#FFFFFF"/>
+                    </g>
+                    
+                    <!-- 日记本标题 -->
+                    <text x="70" y="58" font-family="Arial, sans-serif" font-size="8" fill="#666666" text-anchor="middle">DIARY</text>
+                </svg>
+            </div>
+            
+            <div>
+                <h3>PNG预览</h3>
+                <canvas id="iconCanvas" width="160" height="160"></canvas>
+            </div>
+        </div>
+        
+        <button onclick="convertToPNG()">转换为PNG并下载</button>
+        
+        <div style="margin-top: 40px;">
+            <h3>使用说明</h3>
+            <p>1. 点击"转换为PNG并下载"按钮</p>
+            <p>2. 将下载的icon.png文件替换到以下位置：</p>
+            <ul style="text-align: left; display: inline-block;">
+                <li>./icon.png</li>
+                <li>./dev/icon.png</li>
+                <li>./dist/icon.png</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function convertToPNG() {
+            const canvas = document.getElementById('iconCanvas');
+            const ctx = canvas.getContext('2d');
+            const svg = document.getElementById('iconSvg');
+            
+            // 清空画布
+            ctx.clearRect(0, 0, 160, 160);
+            
+            // 将SVG转换为图像
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(svgBlob);
+            
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, 160, 160);
+                
+                // 转换为PNG并下载
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'icon.png';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+                
+                URL.revokeObjectURL(url);
+            };
+            
+            img.src = url;
+        }
+        
+        // 页面加载时自动预览
+        window.onload = function() {
+            convertToPNG();
+        };
+    </script>
+</body>
+</html>

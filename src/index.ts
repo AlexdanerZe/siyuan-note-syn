@@ -567,54 +567,8 @@ export default class DailyProgressSyncPlugin extends Plugin {
     }
 
     onLayoutReady() {
-        const topBarElement = this.addTopBar({
-            icon: "iconFace",
-            title: this.i18n.addTopBarIcon,
-            position: "right",
-            callback: () => {
-                if (this.isMobile) {
-                    this.addMenu();
-                } else {
-                    let rect = topBarElement.getBoundingClientRect();
-                    // 如果被隐藏，则使用更多按钮
-                    if (rect.width === 0) {
-                        rect = document.querySelector("#barMore").getBoundingClientRect();
-                    }
-                    if (rect.width === 0) {
-                        rect = document.querySelector("#barPlugins").getBoundingClientRect();
-                    }
-                    this.addMenu(rect);
-                }
-            }
-        });
-
-        // 添加专门的设置按钮
-        const settingsBarElement = this.addTopBar({
-            icon: "iconSettings",
-            title: "项目进展同步设置",
-            position: "right",
-            callback: () => {
-                this.openSettingsDialog();
-            }
-        });
-
-        const statusIconTemp = document.createElement("template");
-        statusIconTemp.innerHTML = `<div class="toolbar__item ariaLabel" aria-label="Remove plugin-sample Data">
-    <svg>
-        <use xlink:href="#iconTrashcan"></use>
-    </svg>
-</div>`;
-        statusIconTemp.content.firstElementChild.addEventListener("click", () => {
-            confirm("⚠️", this.i18n.confirmRemove.replace("${name}", this.name), () => {
-                this.removeData(STORAGE_NAME).then(() => {
-                    this.data[STORAGE_NAME] = { readonlyText: "Readonly" };
-                    showMessage(`[${this.name}]: ${this.i18n.removedData}`);
-                });
-            });
-        });
-        this.addStatusBar({
-            element: statusIconTemp.content.firstElementChild as HTMLElement,
-        });
+        // 仅保留手动同步功能，其他按钮已在 onload 中添加
+        // 插件设置通过右键菜单访问，不需要额外的顶部按钮
         // this.loadData(STORAGE_NAME);
         this.settingUtils.load();
         console.log(`frontend: ${getFrontend()}; backend: ${getBackend()}`);

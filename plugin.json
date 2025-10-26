@@ -22,16 +22,16 @@
     "desktop-window"
   ],
   "displayName": {
-    "en_US": "Daily Progress Sync",
-    "zh_CN": "每日进展同步"
+    "en_US": "Project Progress Sync",
+    "zh_CN": "项目进展同步"
   },
   "description": {
-    "en_US": "Automatically sync daily progress from diary to project documents",
-    "zh_CN": "自动将每日日记中的项目进展同步到对应项目文档中"
+    "en_US": "Intelligently sync project progress from daily notes to project documents with smart recognition and duplicate detection",
+    "zh_CN": "智能同步日记中的项目进展到项目文档，支持智能识别和重复检测"
   },
   "readme": {
-    "en_US": "README.md",
-    "zh_CN": "README_zh_CN.md"
+    "en_US": "README_en_US.md",
+    "zh_CN": "README.md"
   },
   "funding": {
     "custom": [
@@ -39,8 +39,14 @@
     ]
   },
   "keywords": [
-    "plugin",
-    "sample",
-    "插件样例"
+    "project",
+    "progress", 
+    "sync",
+    "daily notes",
+    "automation",
+    "项目管理",
+    "进展同步",
+    "日记",
+    "自动化"
   ]
 }
